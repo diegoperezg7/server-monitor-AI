@@ -1,0 +1,6 @@
+.env
+node_modules/
+data/active-services-state.json
+.gstack/
+.claude/
+.DS_Store

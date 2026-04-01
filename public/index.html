@@ -1,0 +1,2407 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#050505">
+<title>Server Guardian — Monitor</title>
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js" onerror="window._chartFailed=true"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #050505;
+    --surface: #121212;
+    --surface2: #1e1e1e;
+    --surface-alt: #1a1a1a;
+    --border: #27272a;
+    --border-hover: #3f3f46;
+    --text: #ededed;
+    --text-dim: #a1a1aa;
+    --text-muted: #52525b;
+    --accent: #00D4FF;
+    --accent-dark: #00B8E0;
+    --accent-light: rgba(0, 212, 255, 0.12);
+    --green: #00D4FF;
+    --yellow: #f59e0b;
+    --red: #ef4444;
+    --orange: #f97316;
+    --purple: #8b5cf6;
+    --cyan: #06b6d4;
+    --blue: #3b82f6;
+    --pink: #ec4899;
+    --radius: 16px;
+    --radius-sm: 10px;
+    --radius-xs: 6px;
+    --shadow-sm: 0 1px 2px 0 rgba(0,0,0,0.2);
+    --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.3), 0 2px 4px -1px rgba(0,0,0,0.2);
+    --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.3), 0 4px 6px -2px rgba(0,0,0,0.15);
+    --font-mono: 'SF Mono', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', monospace;
+  }
+
+  [data-theme="light"] {
+    --bg: #f8fafc;
+    --surface: #ffffff;
+    --surface2: #f1f5f9;
+    --surface-alt: #f1f5f9;
+    --border: #e2e8f0;
+    --border-hover: #cbd5e1;
+    --text: #0f172a;
+    --text-dim: #64748b;
+    --text-muted: #94a3b8;
+    --accent: #0099CC;
+    --accent-dark: #0077AA;
+    --accent-light: rgba(0, 153, 204, 0.10);
+    --shadow-sm: 0 1px 2px 0 rgba(0,0,0,0.05);
+    --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+    --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    letter-spacing: -0.01em;
+    line-height: 1.6;
+    transition: background 0.3s, color 0.3s;
+  }
+
+  .container { max-width: 1280px; margin: 0 auto; padding: 16px; }
+
+  /* Header */
+  .header {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+    gap: 8px; margin-bottom: 20px; padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(5, 5, 5, 0.85);
+    backdrop-filter: blur(16px) saturate(180%);
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
+    padding-top: 12px;
+    margin-left: -16px; margin-right: -16px;
+    padding-left: 16px; padding-right: 16px;
+  }
+  [data-theme="light"] .header {
+    background: rgba(248, 250, 252, 0.85);
+  }
+  .header-left { display: flex; align-items: center; gap: 12px; }
+  .hostname { font-size: 1.4rem; font-weight: 700; letter-spacing: -0.03em; }
+  .status-dot {
+    width: 9px; height: 9px; border-radius: 50%; background: var(--green);
+    display: inline-block; position: relative;
+    box-shadow: 0 0 8px rgba(0, 212, 255, 0.5);
+  }
+  .status-dot::after {
+    content: ''; position: absolute; inset: -4px; border-radius: 50%;
+    background: var(--green); opacity: 0;
+    animation: pingDot 2.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+  .status-dot.offline { background: var(--red); box-shadow: 0 0 8px rgba(239,68,68,0.5); }
+  .status-dot.offline::after { background: var(--red); }
+  @keyframes pingDot {
+    0% { opacity: 0.5; transform: scale(1); }
+    70% { opacity: 0; transform: scale(2.5); }
+    100% { opacity: 0; transform: scale(2.5); }
+  }
+  .header-right { display: flex; align-items: center; gap: 10px; font-size: 0.85rem; color: var(--text-dim); }
+  .badge {
+    background: var(--surface2); padding: 4px 12px; border-radius: 999px;
+    font-size: 0.78rem; font-family: var(--font-mono); border: 1px solid var(--border);
+    letter-spacing: -0.01em;
+  }
+  .theme-toggle {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 999px;
+    padding: 5px 10px; cursor: pointer; font-size: 1rem; line-height: 1;
+    color: var(--text-dim); transition: all 0.2s;
+  }
+  .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+  .portal-link {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 20px;
+    padding: 5px 12px; font-size: 0.8rem; font-weight: 500;
+    color: var(--text-dim); text-decoration: none; transition: all 0.2s;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .portal-link:hover { border-color: var(--accent); color: var(--accent); }
+  .portal-link svg { flex-shrink: 0; }
+
+  /* Cards */
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 20px; margin-bottom: 16px; box-shadow: var(--shadow-sm);
+    transition: box-shadow 0.3s, border-color 0.3s;
+    backdrop-filter: blur(1px);
+  }
+  .card:hover { box-shadow: var(--shadow-md); border-color: var(--border-hover); }
+  .card-glow {
+    border-top: 2px solid var(--accent);
+    box-shadow: 0 0 0 0 transparent;
+    transition: box-shadow 0.3s, border-color 0.3s;
+  }
+  .card-glow:hover {
+    box-shadow: var(--shadow-md), 0 0 20px rgba(0, 212, 255, 0.08);
+    border-color: rgba(0, 212, 255, 0.3);
+  }
+  .card-title {
+    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--text-dim); margin-bottom: 14px; font-weight: 600;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .card-title-icon { width: 16px; height: 16px; flex-shrink: 0; }
+  .card-title-icon svg { width: 16px; height: 16px; stroke: var(--text-dim); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* Section separator */
+  .separator {
+    height: 1px; margin: 28px 0;
+    background: linear-gradient(90deg, transparent 0%, var(--border) 20%, rgba(0,212,255,0.5) 50%, var(--border) 80%, transparent 100%);
+  }
+
+  /* Gauges */
+  .gauges { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+  .gauge-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 18px 14px; text-align: center; box-shadow: var(--shadow-sm);
+    border-top: 2px solid var(--accent);
+    transition: box-shadow 0.3s, transform 0.2s;
+  }
+  .gauge-card:hover {
+    box-shadow: var(--shadow-md), 0 0 24px rgba(0, 212, 255, 0.10);
+    transform: translateY(-2px);
+    border-color: rgba(0, 212, 255, 0.35);
+  }
+  .gauge-svg { width: 100%; max-width: 120px; margin: 0 auto; }
+  .gauge-label {
+    font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--text-dim); margin-top: 8px; font-weight: 600;
+  }
+  .gauge-value {
+    font-size: 1.7rem; font-weight: 700; font-family: var(--font-mono);
+    font-feature-settings: 'tnum' 1;
+  }
+  .gauge-sub { font-size: 0.75rem; color: var(--text-dim); margin-top: 2px; font-family: var(--font-mono); }
+
+  /* System Info Strip */
+  .sys-info {
+    display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px;
+  }
+  .sys-chip {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
+    padding: 6px 14px; font-size: 0.78rem; color: var(--text-dim);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .sys-chip-label { color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  .sys-chip-val { color: var(--text); font-weight: 500; font-family: var(--font-mono); }
+
+  /* Memory bar */
+  .mem-bar-container { margin-top: 8px; }
+  .mem-bar { display: flex; height: 12px; border-radius: 9999px; overflow: hidden; background: var(--surface2); }
+  .mem-bar div { transition: width 0.6s ease; min-width: 0; }
+  .mem-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; font-size: 0.75rem; color: var(--text-dim); }
+  .mem-legend-item { display: flex; align-items: center; gap: 5px; }
+  .mem-legend-dot { width: 8px; height: 8px; border-radius: 3px; flex-shrink: 0; }
+
+  /* Charts */
+  .chart-grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+  .chart-wrapper { position: relative; height: 180px; }
+  .chart-wrapper canvas { width: 100% !important; height: 100% !important; }
+
+  /* Load bars */
+  .load-bars { display: flex; flex-direction: column; gap: 12px; }
+  .load-row { display: flex; align-items: center; gap: 10px; }
+  .load-label { font-size: 0.8rem; color: var(--text-dim); min-width: 50px; font-family: var(--font-mono); }
+  .load-track { flex: 1; height: 10px; background: var(--surface2); border-radius: 9999px; overflow: hidden; }
+  .load-fill { height: 100%; border-radius: 9999px; transition: width 0.6s ease, background 0.3s; }
+  .load-val { font-size: 0.85rem; font-weight: 600; min-width: 40px; text-align: right; font-family: var(--font-mono); }
+
+  /* Two-col grid */
+  .grid-2 { display: grid; grid-template-columns: 1fr; gap: 16px; }
+
+  /* Storage */
+  .storage-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+  .storage-item {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 14px;
+  }
+  .storage-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .storage-mount { font-size: 0.9rem; font-weight: 600; font-family: var(--font-mono); }
+  .storage-pct { font-size: 0.85rem; font-weight: 700; font-family: var(--font-mono); }
+  .storage-bar { height: 8px; background: var(--surface); border-radius: 9999px; overflow: hidden; margin-bottom: 6px; }
+  .storage-bar-fill { height: 100%; border-radius: 9999px; transition: width 0.6s ease; }
+  .storage-details { display: flex; gap: 16px; font-size: 0.75rem; color: var(--text-dim); flex-wrap: wrap; }
+  .storage-detail-val { font-family: var(--font-mono); color: var(--text); font-weight: 500; }
+
+  /* Docker grid */
+  .docker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; animation: fadeIn 0.3s ease; }
+  .docker-pager { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 12px; }
+  .docker-pager-btn {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 6px 14px; cursor: pointer; color: var(--text-dim); font-size: 0.78rem; font-weight: 600;
+    transition: all 0.2s;
+  }
+  .docker-pager-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .docker-pager-btn:disabled { opacity: 0.3; cursor: default; border-color: var(--border); color: var(--text-muted); }
+  .docker-pager-info { font-size: 0.72rem; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  .docker-pager-dots { display: flex; gap: 6px; }
+  .docker-pager-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); transition: background 0.2s; }
+  .docker-pager-dot.active { background: var(--accent); }
+  .docker-card {
+    background: var(--surface2); border-radius: var(--radius-sm); padding: 14px;
+    border: 1px solid var(--border);
+    transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+    cursor: pointer;
+  }
+  .docker-card:hover {
+    border-color: rgba(0, 212, 255, 0.4);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2), 0 0 0 1px rgba(0,212,255,0.2);
+    transform: translateY(-2px);
+  }
+  .docker-card-header { display: flex; align-items: center; gap: 10px; }
+  .docker-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .docker-dot.running { background: var(--green); box-shadow: 0 0 6px rgba(0,212,255,0.6); }
+  .docker-dot.paused { background: var(--yellow); }
+  .docker-dot.stopped { background: var(--red); }
+  .docker-name { font-size: 0.9rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .docker-status { font-size: 0.7rem; color: var(--text-dim); }
+  .docker-image { font-size: 0.65rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; font-family: var(--font-mono); }
+  .docker-stats-row {
+    display: flex; gap: 8px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border);
+    font-size: 0.72rem; color: var(--text-dim); flex-wrap: wrap;
+  }
+  .docker-stat {
+    display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 1; min-width: 50px;
+  }
+  .docker-stat-val { font-family: var(--font-mono); font-weight: 600; color: var(--text); font-size: 0.8rem; }
+  .docker-stat-label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  .docker-mini-bar { width: 100%; height: 4px; background: var(--surface); border-radius: 9999px; overflow: hidden; margin-top: 2px; }
+  .docker-mini-fill { height: 100%; border-radius: 9999px; transition: width 0.5s ease; }
+
+  /* Docker detail modal */
+  .docker-detail-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100;
+    display: flex; align-items: center; justify-content: center; padding: 16px;
+    animation: fadeInOverlay 0.2s ease;
+  }
+  @keyframes fadeInOverlay { from { opacity: 0; } to { opacity: 1; } }
+  .docker-detail-panel {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    max-width: 600px; width: 100%; max-height: 85vh; overflow-y: auto; padding: 24px;
+    box-shadow: var(--shadow-lg); animation: fadeIn 0.3s ease;
+  }
+  .docker-detail-panel::-webkit-scrollbar { width: 4px; }
+  .docker-detail-panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .docker-detail-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .docker-detail-title { font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+  .docker-detail-close {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 6px 12px; cursor: pointer; color: var(--text-dim); font-size: 0.85rem;
+    transition: all 0.2s;
+  }
+  .docker-detail-close:hover { border-color: var(--accent); color: var(--accent); }
+  .docker-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+  .docker-detail-stat {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 14px; text-align: center;
+  }
+  .docker-detail-stat-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); margin-bottom: 4px; }
+  .docker-detail-stat-val { font-size: 1.3rem; font-weight: 700; font-family: var(--font-mono); }
+  .docker-detail-section { margin-top: 14px; }
+  .docker-detail-section-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); font-weight: 600; margin-bottom: 8px; }
+  .docker-detail-row {
+    display: flex; justify-content: space-between; padding: 6px 0;
+    border-bottom: 1px solid var(--border); font-size: 0.82rem;
+  }
+  .docker-detail-row:last-child { border-bottom: none; }
+  .docker-detail-key { color: var(--text-dim); }
+  .docker-detail-val { color: var(--text); font-family: var(--font-mono); font-weight: 500; text-align: right; max-width: 60%; word-break: break-all; }
+
+  /* Restore state */
+  .restore-toolbar {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+    flex-wrap: wrap; margin-bottom: 14px;
+  }
+  .restore-status-wrap { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .restore-status-pill {
+    padding: 5px 12px; border-radius: 9999px; font-size: 0.75rem; font-weight: 700;
+    letter-spacing: 0.04em; text-transform: uppercase; border: 1px solid var(--border);
+    background: var(--surface2); color: var(--text-dim);
+  }
+  .restore-status-pill.ok { background: rgba(0,212,255,0.15); color: var(--green); border-color: rgba(0,212,255,0.3); }
+  .restore-status-pill.warn { background: rgba(245,158,11,0.15); color: var(--yellow); border-color: rgba(245,158,11,0.3); }
+  .restore-status-pill.err { background: rgba(239,68,68,0.15); color: var(--red); border-color: rgba(239,68,68,0.3); }
+  .restore-status-pill.info { background: rgba(6,182,212,0.15); color: var(--cyan); border-color: rgba(6,182,212,0.3); }
+  .restore-status-text { font-size: 0.8rem; color: var(--text-dim); }
+  .restore-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+  .restore-chip {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 9999px;
+    padding: 6px 12px; font-size: 0.76rem; color: var(--text-dim);
+  }
+  .restore-chip strong { color: var(--text); font-family: var(--font-mono); font-weight: 600; }
+  .restore-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .btn-sm.primary {
+    background: var(--accent-light); border-color: rgba(0,212,255,0.35); color: var(--accent);
+  }
+  .btn-sm.primary:hover { border-color: var(--accent); color: var(--accent); }
+  .restore-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+  .restore-panel {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px;
+  }
+  .restore-panel-title {
+    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim);
+    font-weight: 600; margin-bottom: 8px;
+  }
+  .restore-row {
+    display: flex; justify-content: space-between; gap: 10px; padding: 6px 0;
+    border-bottom: 1px solid var(--border); font-size: 0.8rem;
+  }
+  .restore-row:last-child { border-bottom: none; }
+  .restore-row-label { color: var(--text-dim); }
+  .restore-row-val { color: var(--text); font-family: var(--font-mono); text-align: right; }
+  .restore-list { display: flex; flex-wrap: wrap; gap: 6px; }
+  .restore-tag {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 9999px;
+    padding: 4px 10px; font-size: 0.72rem; color: var(--text); font-family: var(--font-mono);
+  }
+  .restore-note { font-size: 0.78rem; color: var(--text-dim); line-height: 1.5; }
+
+  /* Security */
+  .sec-status { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+  .sec-badge {
+    padding: 4px 12px; border-radius: 999px; font-size: 0.72rem; font-weight: 700;
+    display: flex; align-items: center; gap: 5px;
+    letter-spacing: 0.04em; text-transform: uppercase;
+  }
+  .sec-badge.up { background: rgba(0,212,255,0.15); color: var(--green); border: 1px solid rgba(0,212,255,0.3); }
+  .sec-badge.down { background: rgba(239,68,68,0.15); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
+  .sec-stats { display: flex; gap: 20px; font-size: 0.85rem; color: var(--text-dim); flex-wrap: wrap; }
+  .sec-stat-val { font-weight: 700; color: var(--text); font-family: var(--font-mono); }
+  .alert-list { margin-top: 12px; font-size: 0.8rem; }
+  .alert-item {
+    padding: 10px 0; border-bottom: 1px solid var(--border);
+    display: flex; justify-content: space-between; gap: 8px; align-items: center;
+  }
+  .alert-item:last-child { border-bottom: none; }
+  .alert-scenario { color: var(--orange); font-weight: 500; }
+  .alert-time { color: var(--text-muted); white-space: nowrap; font-family: var(--font-mono); font-size: 0.75rem; }
+  .alert-source { color: var(--text-dim); font-family: var(--font-mono); font-size: 0.75rem; }
+
+  /* Threat level */
+  .threat-level {
+    display: flex; align-items: center; gap: 12px; padding: 14px;
+    background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    margin-bottom: 14px;
+  }
+  .threat-level-indicator {
+    width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center;
+    justify-content: center; font-size: 1.4rem; font-weight: 800; font-family: var(--font-mono);
+    flex-shrink: 0;
+  }
+  .threat-low { background: rgba(0,212,255,0.15); color: var(--green); border: 2px solid var(--green); }
+  .threat-medium { background: rgba(245,158,11,0.15); color: var(--yellow); border: 2px solid var(--yellow); }
+  .threat-high { background: rgba(239,68,68,0.15); color: var(--red); border: 2px solid var(--red); animation: pulseGlow 2s infinite; }
+  .threat-info { flex: 1; }
+  .threat-title { font-size: 0.9rem; font-weight: 700; }
+  .threat-desc { font-size: 0.78rem; color: var(--text-dim); }
+
+  /* Alerts panel */
+  .alerts-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+  .alerts-tg-status {
+    display: flex; align-items: center; gap: 8px; font-size: 0.8rem;
+  }
+  .alerts-tg-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+  .alerts-tg-dot.ok { background: var(--green); }
+  .alerts-tg-dot.err { background: var(--red); }
+  .alerts-tg-dot.unknown { background: var(--text-muted); }
+  .btn-sm {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 999px;
+    padding: 5px 16px; cursor: pointer; color: var(--text-dim); font-size: 0.76rem;
+    font-weight: 600; transition: all 0.2s; font-family: inherit; letter-spacing: 0.02em;
+  }
+  .btn-sm:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+  .btn-sm:disabled { opacity: 0.5; cursor: not-allowed; }
+  .alert-history-item {
+    padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 0.8rem;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .alert-history-item:last-child { border-bottom: none; }
+  .alert-type-badge {
+    padding: 2px 10px; border-radius: 999px; font-size: 0.66rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; flex-shrink: 0;
+  }
+  .alert-sent-ok { color: var(--green); }
+  .alert-sent-fail { color: var(--red); }
+
+  /* Alarms */
+  .alarm-item { padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 0.8rem; display: flex; align-items: center; gap: 8px; }
+  .alarm-item:last-child { border-bottom: none; }
+  .alarm-badge {
+    padding: 2px 10px; border-radius: 999px; font-size: 0.68rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.06em; flex-shrink: 0;
+  }
+  .alarm-warn { background: rgba(245,158,11,0.15); color: var(--yellow); border: 1px solid rgba(245,158,11,0.3); }
+  .alarm-crit { background: rgba(239,68,68,0.15); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
+  .alarm-clear { background: rgba(0,212,255,0.15); color: var(--green); border: 1px solid rgba(0,212,255,0.3); }
+
+  /* Processes table */
+  .proc-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  .proc-table th {
+    text-align: left; padding: 8px 10px; color: var(--text-muted); font-weight: 600;
+    font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em;
+    border-bottom: 1px solid var(--border); background: var(--surface2);
+  }
+  .proc-table td {
+    padding: 7px 10px; border-bottom: 1px solid var(--border);
+    font-family: var(--font-mono); font-size: 0.8rem;
+    transition: background 0.15s;
+  }
+  .proc-table tbody tr:nth-child(even) td { background: rgba(255,255,255,0.015); }
+  .proc-table tr:last-child td { border-bottom: none; }
+  .proc-table tbody tr:hover td { background: var(--accent-light); }
+  .proc-name { color: var(--text); font-weight: 500; }
+  .proc-bar-track { width: 100%; height: 6px; background: var(--surface2); border-radius: 9999px; overflow: hidden; }
+  .proc-bar-fill { height: 100%; border-radius: 9999px; transition: width 0.5s ease; }
+
+  /* Network interfaces */
+  .net-iface-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+  .net-iface-card {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 14px; transition: border-color 0.2s;
+  }
+  .net-iface-card:hover { border-color: var(--border-hover); }
+  .net-iface-name { font-size: 0.9rem; font-weight: 600; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .net-iface-stat { display: flex; justify-content: space-between; font-size: 0.78rem; color: var(--text-dim); margin-top: 4px; }
+  .net-iface-val { font-family: var(--font-mono); color: var(--text); font-weight: 500; }
+
+  /* Log entries */
+  .log-entry {
+    padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 0.8rem;
+    display: flex; align-items: flex-start; gap: 10px;
+  }
+  .log-entry:last-child { border-bottom: none; }
+  .log-time { color: var(--text-muted); font-family: var(--font-mono); font-size: 0.72rem; white-space: nowrap; min-width: 70px; }
+  .log-msg { color: var(--text-dim); flex: 1; }
+  .log-chart { color: var(--accent); font-weight: 500; }
+
+  /* Loading */
+  .loading { display: flex; align-items: center; justify-content: center; min-height: 60px; color: var(--text-dim); font-size: 0.85rem; gap: 10px; }
+  .spinner {
+    width: 18px; height: 18px; border: 2px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Empty state */
+  .empty-state { text-align: center; padding: 24px; color: var(--text-muted); font-size: 0.85rem; }
+
+  /* Scrollbar */
+  .scrollable { max-height: 320px; overflow-y: auto; }
+  .scrollable::-webkit-scrollbar { width: 4px; }
+  .scrollable::-webkit-scrollbar-track { background: transparent; }
+  .scrollable::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .scrollable::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
+
+  /* Footer */
+  .footer {
+    text-align: center; padding: 20px; color: var(--text-muted); font-size: 0.75rem;
+    border-top: 1px solid var(--border); margin-top: 24px;
+  }
+  .footer a { color: var(--accent); text-decoration: none; }
+
+  /* Responsive */
+  @media (min-width: 768px) {
+    .container { padding: 24px; }
+    .gauges { gap: 16px; }
+    .gauge-card { padding: 22px 16px; }
+    .gauge-value { font-size: 2.1rem; }
+    .chart-grid { grid-template-columns: 1fr 1fr; }
+    .chart-wrapper { height: 200px; }
+    .grid-2 { grid-template-columns: 1fr 1fr; }
+    .storage-grid { grid-template-columns: 1fr 1fr; }
+  }
+  @media (min-width: 1024px) {
+    .container { padding: 32px; }
+    .gauge-svg { max-width: 140px; }
+  }
+
+  /* CPU cores grid */
+  .cores-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(45px, 1fr)); gap: 6px; }
+  .core-item { text-align: center; }
+  .core-bar { height: 32px; background: var(--surface2); border-radius: 4px; overflow: hidden; position: relative; display: flex; align-items: flex-end; }
+  .core-fill { width: 100%; border-radius: 4px; transition: height 0.5s ease, background 0.3s; }
+  .core-label { font-size: 0.6rem; color: var(--text-muted); margin-top: 2px; font-family: var(--font-mono); }
+  .core-val { font-size: 0.65rem; font-family: var(--font-mono); font-weight: 600; margin-top: 1px; }
+
+  /* Swap bar */
+  .swap-bar { display: flex; align-items: center; gap: 12px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .swap-track { flex: 1; height: 8px; background: var(--surface2); border-radius: 9999px; overflow: hidden; }
+  .swap-fill { height: 100%; border-radius: 9999px; transition: width 0.6s ease; background: var(--pink); }
+  .swap-info { font-size: 0.75rem; color: var(--text-dim); font-family: var(--font-mono); display: flex; gap: 12px; flex-wrap: wrap; }
+
+  /* Connections grid */
+  .conn-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; }
+  .conn-item { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; text-align: center; }
+  .conn-val { font-size: 1.3rem; font-weight: 700; font-family: var(--font-mono); }
+  .conn-label { font-size: 0.68rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
+
+  /* Attack map */
+  .attack-map { height: 320px; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); }
+  .attack-map .leaflet-container { background: var(--surface2) !important; }
+  .leaflet-popup-content-wrapper { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm) !important; box-shadow: var(--shadow-lg); }
+  .leaflet-popup-tip { background: var(--surface); border: 1px solid var(--border); }
+  .leaflet-popup-content { font-family: inherit; font-size: 0.8rem; margin: 10px 14px; }
+  .leaflet-control-attribution { font-size: 0.6rem !important; background: var(--surface) !important; color: var(--text-muted) !important; }
+  .leaflet-control-attribution a { color: var(--accent) !important; }
+
+  /* Country grid */
+  .country-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
+  .country-item {
+    display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+    background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    transition: border-color 0.2s; cursor: default;
+  }
+  .country-item:hover { border-color: var(--border-hover); }
+  .country-flag { width: 24px; height: 18px; border-radius: 2px; object-fit: cover; flex-shrink: 0; }
+  .country-name { font-size: 0.82rem; font-weight: 500; flex: 1; }
+  .country-count { font-size: 0.9rem; font-weight: 700; font-family: var(--font-mono); color: var(--red); }
+
+  /* IP detail modal */
+  .ip-detail-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100;
+    display: flex; align-items: center; justify-content: center; padding: 16px;
+    animation: fadeInOverlay 0.2s ease;
+  }
+  .ip-detail-panel {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    max-width: 550px; width: 100%; max-height: 85vh; overflow-y: auto; padding: 24px;
+    box-shadow: var(--shadow-lg); animation: fadeIn 0.3s ease;
+  }
+  .ip-detail-panel::-webkit-scrollbar { width: 4px; }
+  .ip-detail-panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .ip-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .ip-header-flag { width: 36px; height: 27px; border-radius: 3px; object-fit: cover; }
+  .ip-header-info { flex: 1; }
+  .ip-header-ip { font-size: 1.2rem; font-weight: 700; font-family: var(--font-mono); }
+  .ip-header-loc { font-size: 0.82rem; color: var(--text-dim); }
+  .ip-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+  .ip-detail-stat { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; text-align: center; }
+  .ip-detail-stat-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); margin-bottom: 4px; }
+  .ip-detail-stat-val { font-size: 0.95rem; font-weight: 600; font-family: var(--font-mono); word-break: break-all; }
+  .ip-detail-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 0.82rem; }
+  .ip-detail-row:last-child { border-bottom: none; }
+
+  /* Scenario bars */
+  .scenario-bars { display: flex; flex-direction: column; gap: 6px; }
+  .scenario-row { display: flex; align-items: center; gap: 8px; font-size: 0.78rem; }
+  .scenario-name { flex: 1; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .scenario-bar-track { width: 120px; height: 6px; background: var(--surface2); border-radius: 9999px; overflow: hidden; flex-shrink: 0; }
+  .scenario-bar-fill { height: 100%; border-radius: 9999px; background: var(--red); }
+  .scenario-count { font-family: var(--font-mono); font-weight: 600; color: var(--text); min-width: 30px; text-align: right; }
+
+  /* Clickable IP */
+  .ip-clickable { cursor: pointer; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 2px; transition: color 0.2s; }
+  .ip-clickable:hover { color: var(--accent); }
+
+  /* Animations */
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  .fade-in { animation: fadeIn 0.4s ease-out; }
+  @keyframes pulseGlow {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); }
+    50% { box-shadow: 0 0 0 8px rgba(239,68,68,0); }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <span class="status-dot" id="connDot"></span>
+      <span class="hostname" id="hostname">Cargando...</span>
+    </div>
+    <div class="header-right">
+      <a href="/" class="portal-link" title="Inicio">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        Portal
+      </a>
+      <span class="badge" id="uptime">--</span>
+      <span id="clock" class="badge"></span>
+      <button class="theme-toggle" id="themeBtn" title="Cambiar tema">&#9790;</button>
+    </div>
+  </div>
+
+  <!-- System Info Strip -->
+  <div class="sys-info" id="sysInfo"></div>
+
+  <!-- Gauges: CPU / RAM / Disco -->
+  <div class="gauges">
+    <div class="gauge-card">
+      <div class="gauge-svg" id="cpuGauge"></div>
+      <div class="gauge-label">CPU</div>
+      <div class="gauge-value" id="cpuVal">--</div>
+      <div class="gauge-sub" id="cpuSub"></div>
+    </div>
+    <div class="gauge-card">
+      <div class="gauge-svg" id="ramGauge"></div>
+      <div class="gauge-label">Memoria</div>
+      <div class="gauge-value" id="ramVal">--</div>
+      <div class="gauge-sub" id="ramSub"></div>
+    </div>
+    <div class="gauge-card">
+      <div class="gauge-svg" id="diskGauge"></div>
+      <div class="gauge-label">Disco</div>
+      <div class="gauge-value" id="diskVal">--</div>
+      <div class="gauge-sub" id="diskSub"></div>
+    </div>
+  </div>
+
+  <!-- Storage Details -->
+  <div class="card">
+    <div class="card-title"><span class="card-title-icon"><svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span> Almacenamiento</div>
+    <div id="storageSection"><div class="loading"><div class="spinner"></div>Cargando almacenamiento...</div></div>
+  </div>
+
+  <!-- CPU Chart -->
+  <div class="card card-glow">
+    <div class="card-title"><span class="card-title-icon"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="15" x2="23" y2="15"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="15" x2="4" y2="15"/></svg></span> Uso de CPU (60s)</div>
+    <div class="chart-wrapper"><canvas id="cpuChart"></canvas></div>
+  </div>
+
+  <!-- CPU Cores -->
+  <div class="card">
+    <div class="card-title"><span class="card-title-icon"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="15" x2="23" y2="15"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="15" x2="4" y2="15"/></svg></span> Uso por Core</div>
+    <div id="cpuCoresSection"><div class="loading"><div class="spinner"></div>Cargando cores...</div></div>
+  </div>
+
+  <!-- Memory Breakdown + System Load -->
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title"><span class="card-title-icon"><svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="10" x2="6" y2="14"/><line x1="10" y1="10" x2="10" y2="14"/><line x1="14" y1="10" x2="14" y2="14"/></svg></span> Desglose de Memoria</div>
+      <div class="mem-bar-container">
+        <div class="mem-bar" id="memBar"></div>
+        <div class="mem-legend" id="memLegend"></div>
+      </div>
+      <div id="swapSection"></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="card-title-icon"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span> Carga del Sistema</div>
+      <div class="load-bars" id="loadBars">
+        <div class="load-row"><span class="load-label">1 min</span><div class="load-track"><div class="load-fill" id="load1"></div></div><span class="load-val" id="load1v">--</span></div>
+        <div class="load-row"><span class="load-label">5 min</span><div class="load-track"><div class="load-fill" id="load5"></div></div><span class="load-val" id="load5v">--</span></div>
+        <div class="load-row"><span class="load-label">15 min</span><div class="load-track"><div class="load-fill" id="load15"></div></div><span class="load-val" id="load15v">--</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Network + Disk I/O Charts -->
+  <div class="chart-grid">
+    <div class="card">
+      <div class="card-title"><span class="card-title-icon"><svg viewBox="0 0 24 24"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1"/></svg></span> Red I/O (60s)</div>
+      <div class="chart-wrapper"><canvas id="netChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="card-title-icon"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></span> Disco I/O (60s)</div>
+      <div class="chart-wrapper"><canvas id="ioChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="separator"></div>
+
+  <!-- Top Processes -->
+  <div class="card">
+    <div class="card-title"><span class="card-title-icon"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span> Procesos Principales</div>
+    <div id="processSection"><div class="loading"><div class="spinner"></div>Cargando procesos...</div></div>
+  </div>
+
+  <!-- Network Interfaces -->
+  <div class="card">
+    <div class="card-title"><span class="card-title-icon"><svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/><circle cx="5" cy="7" r="1" fill="currentColor" stroke="none"/><circle cx="9" cy="7" r="1" fill="currentColor" stroke="none"/></svg></span> Interfaces de Red</div>
+    <div id="netIfaceSection"><div class="loading"><div class="spinner"></div>Cargando interfaces...</div></div>
+  </div>
+
+  <!-- Connections -->
+  <div class="card">
+    <div class="card-title"><span class="card-title-icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span> Conexiones TCP/UDP</div>
+    <div id="connectionsSection"><div class="loading"><div class="spinner"></div>Cargando conexiones...</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="card-title-icon"><svg viewBox="0 0 24 24"><path d="M21 16v-4a2 2 0 0 0-2-2h-4"/><path d="M3 8v4a2 2 0 0 0 2 2h4"/><path d="M16 3l5 5-5 5"/><path d="M8 21l-5-5 5-5"/></svg></span> Recuperacion tras Reinicio</div>
+    <div id="restoreSection"><div class="loading"><div class="spinner"></div>Cargando estado de restauracion...</div></div>
+  </div>
+
+  <div class="separator"></div>
+
+  <!-- Docker Containers -->
+  <div class="card">
+    <div class="card-title"><span class="card-title-icon"><svg viewBox="0 0 24 24"><path d="M21 12c0 1.2-4 6-9 6s-9-4.8-9-6c0-1.2 4-6 9-6s9 4.8 9 6z" stroke="none" fill="none"/><rect x="1" y="8" width="4" height="3" rx="0.5"/><rect x="6" y="8" width="4" height="3" rx="0.5"/><rect x="11" y="8" width="4" height="3" rx="0.5"/><rect x="6" y="4" width="4" height="3" rx="0.5"/><rect x="11" y="4" width="4" height="3" rx="0.5"/><rect x="16" y="4" width="4" height="3" rx="0.5"/><rect x="11" y="0" width="4" height="3" rx="0.5"/><path d="M22 12c0 5-3.5 9-10 9S2 17 2 12" stroke-width="1.5"/></svg></span> Contenedores Docker <span id="dockerCount" style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0"></span></div>
+    <div id="dockerSection"><div class="loading"><div class="spinner"></div>Cargando contenedores...</div></div>
+  </div>
+  <div id="dockerDetailOverlay" style="display:none"></div>
+
+  <div class="separator"></div>
+
+  <!-- Security (CrowdSec) -->
+  <div class="card card-glow">
+    <div class="card-title"><span class="card-title-icon"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span> Seguridad &mdash; CrowdSec</div>
+    <div id="securitySection"><div class="loading"><div class="spinner"></div>Cargando datos de seguridad...</div></div>
+  </div>
+
+  <!-- Attack Map -->
+  <div class="card">
+    <div class="card-title"><span class="card-title-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span> Mapa de Ataques <span id="attackMapCount" style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0"></span></div>
+    <div id="attackMapContainer" class="attack-map"><div class="loading"><div class="spinner"></div>Cargando mapa...</div></div>
+    <div id="countryBreakdown" style="margin-top:14px"></div>
+  </div>
+
+  <!-- Attack Timeline -->
+  <div class="card">
+    <div class="card-title"><span class="card-title-icon"><svg viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></span> Tendencia de Ataques</div>
+    <div style="display:grid;grid-template-columns:1fr;gap:16px">
+      <div>
+        <div style="font-size:0.72rem;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">Ultimos 7 dias</div>
+        <div class="chart-wrapper" style="height:180px"><canvas id="attackDailyChart"></canvas></div>
+      </div>
+      <div>
+        <div style="font-size:0.72rem;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">Ultimas 24 horas</div>
+        <div class="chart-wrapper" style="height:150px"><canvas id="attackHourlyChart"></canvas></div>
+      </div>
+    </div>
+    <div id="scenarioBreakdown" style="margin-top:14px"></div>
+  </div>
+
+  <!-- IP Detail Modal -->
+  <div id="ipDetailOverlay" style="display:none"></div>
+
+  <!-- Telegram Alerts Panel -->
+  <div class="card card-glow">
+    <div class="card-title"><span class="card-title-icon"><svg viewBox="0 0 24 24"><path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/></svg></span> Alertas &mdash; Telegram</div>
+    <div id="alertsSection"><div class="loading"><div class="spinner"></div>Cargando alertas...</div></div>
+  </div>
+
+  <!-- Netdata Alarms -->
+  <div class="card" id="alarmsCard" style="display:none">
+    <div class="card-title"><span class="card-title-icon"><svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span> Alarmas Activas</div>
+    <div id="alarmsSection"></div>
+  </div>
+
+  <!-- System Logs -->
+  <div class="card">
+    <div class="card-title"><span class="card-title-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span> Registro de Eventos</div>
+    <div id="logsSection"><div class="loading"><div class="spinner"></div>Cargando eventos...</div></div>
+  </div>
+
+  <div class="footer">
+    Monitor del Servidor &mdash; Datos en tiempo real via <a href="#">Netdata</a> + <a href="#">CrowdSec</a> + <a href="#">Telegram</a>
+  </div>
+</div>
+
+<script>
+// ---- State ----
+let totalRamGB = 16;
+let cores = 10;
+let connected = false;
+let paused = false;
+let restoreStateInfo = null;
+
+// ---- Theme (shared across all darc3 apps) ----
+function getSharedTheme() {
+  try {
+    return localStorage.getItem('darc3-theme');
+  } catch(e) {
+    return null;
+  }
+}
+function applyMonitorTheme(theme) {
+  if (theme === 'light') {
+    document.documentElement.setAttribute('data-theme', 'light');
+    document.getElementById('themeBtn').innerHTML = '&#9728;';
+    document.querySelector('meta[name="theme-color"]').content = '#f8fafc';
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+    document.getElementById('themeBtn').innerHTML = '&#9790;';
+    document.querySelector('meta[name="theme-color"]').content = '#050505';
+  }
+  updateChartColors();
+}
+function setSharedTheme(theme) {
+  try {
+    localStorage.setItem('darc3-theme', theme);
+  } catch(e) {}
+  applyMonitorTheme(theme);
+}
+(function initTheme() {
+  var saved = getSharedTheme();
+  if (saved === 'light' || saved === 'dark') {
+    applyMonitorTheme(saved);
+  } else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
+    applyMonitorTheme('light');
+  } else {
+    applyMonitorTheme('dark');
+  }
+})();
+document.getElementById('themeBtn').addEventListener('click', function() {
+  var current = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+  setSharedTheme(current === 'light' ? 'dark' : 'light');
+});
+window.addEventListener('storage', function(e) {
+  if (e.key === 'darc3-theme' && e.newValue) {
+    applyMonitorTheme(e.newValue);
+  }
+});
+
+function getGridColor() {
+  return getComputedStyle(document.documentElement).getPropertyValue('--border').trim() || 'rgba(255,255,255,0.04)';
+}
+function getTickColor() {
+  return getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#64748b';
+}
+
+// ---- Clock ----
+function updateClock() {
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString('es-ES');
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ---- Visibility API ----
+document.addEventListener('visibilitychange', () => {
+  paused = document.hidden;
+  if (!paused) { fetchSystem(); fetchCharts(); }
+});
+
+// ---- SVG Gauge ----
+function createGauge(containerId) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = `<svg viewBox="0 0 120 120">
+    <circle cx="60" cy="60" r="50" fill="none" stroke="var(--surface2)" stroke-width="10" stroke-linecap="round"
+      stroke-dasharray="251.3" stroke-dashoffset="62.83" transform="rotate(135 60 60)"/>
+    <circle cx="60" cy="60" r="50" fill="none" stroke="var(--accent)" stroke-width="10" stroke-linecap="round"
+      stroke-dasharray="251.3" stroke-dashoffset="251.3" transform="rotate(135 60 60)"
+      class="gauge-arc" style="transition: stroke-dashoffset 0.6s ease, stroke 0.3s"/>
+  </svg>`;
+  return el.querySelector('.gauge-arc');
+}
+
+function setGauge(arc, pct, valEl) {
+  const maxArc = 188.5;
+  const offset = 251.3 - (maxArc * Math.min(pct, 100) / 100);
+  arc.style.strokeDashoffset = offset;
+  const color = pct > 90 ? 'var(--red)' : pct > 70 ? 'var(--yellow)' : 'var(--accent)';
+  arc.style.stroke = color;
+  if (valEl) valEl.style.color = color;
+}
+
+const cpuArc = createGauge('cpuGauge');
+const ramArc = createGauge('ramGauge');
+const diskArc = createGauge('diskGauge');
+
+function dbg() {}
+
+// ---- Fetch helpers ----
+async function api(path, timeoutOrOptions, maybeOptions) {
+  var timeoutMs = 10000;
+  var fetchOptions = {};
+
+  if (typeof timeoutOrOptions === 'number') {
+    timeoutMs = timeoutOrOptions;
+    fetchOptions = maybeOptions || {};
+  } else if (timeoutOrOptions && typeof timeoutOrOptions === 'object') {
+    fetchOptions = Object.assign({}, timeoutOrOptions);
+    if (typeof fetchOptions.timeoutMs === 'number') {
+      timeoutMs = fetchOptions.timeoutMs;
+      delete fetchOptions.timeoutMs;
+    }
+  }
+
+  var ctrl = new AbortController();
+  var timer = setTimeout(function() { ctrl.abort(); }, timeoutMs);
+  try {
+    var t0 = performance.now();
+    var r = await fetch(path, Object.assign({ signal: ctrl.signal, credentials: 'same-origin' }, fetchOptions));
+    clearTimeout(timer);
+    if (!r.ok) {
+      dbg('<span style="color:var(--red)">' + path + ' -> HTTP ' + r.status + '</span>');
+      throw new Error(r.status);
+    }
+    var data = await r.json();
+    dbg('<span style="color:var(--green)">' + path + ' -> OK ' + (performance.now()-t0).toFixed(0) + 'ms</span>');
+    return data;
+  } catch (e) {
+    clearTimeout(timer);
+    dbg('<span style="color:var(--red)">' + path + ' -> ' + (e.name === 'AbortError' ? 'TIMEOUT' : e.message) + '</span>');
+    throw e;
+  }
+}
+
+dbg('JS cargado OK');
+
+// ---- Chart.js setup (wrapped to not break if CDN fails) ----
+var cpuChart = null, netChart = null, ioChart = null, attackDailyChart = null, attackHourlyChart = null;
+
+var chartOpts = function(yLabel) {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: { duration: 300 },
+    interaction: { intersect: false, mode: 'index' },
+    plugins: { legend: { display: false }, tooltip: { enabled: true } },
+    scales: {
+      x: { display: false },
+      y: {
+        grid: { color: getGridColor() },
+        ticks: { color: getTickColor(), font: { size: 10 }, callback: function(v) { return Math.abs(v).toFixed(0) + (yLabel || ''); } },
+        beginAtZero: true,
+      }
+    },
+    elements: { point: { radius: 0 }, line: { tension: 0.3, borderWidth: 2 } },
+  };
+};
+
+function updateChartColors() {
+  var gc = getGridColor();
+  var tc = getTickColor();
+  [cpuChart, netChart, ioChart, attackDailyChart, attackHourlyChart].forEach(function(c) {
+    if (c && c.options && c.options.scales) {
+      if (c.options.scales.y) { c.options.scales.y.grid.color = gc; c.options.scales.y.ticks.color = tc; }
+      if (c.options.scales.x) { c.options.scales.x.grid = c.options.scales.x.grid || {}; c.options.scales.x.grid.color = gc; c.options.scales.x.ticks = c.options.scales.x.ticks || {}; c.options.scales.x.ticks.color = tc; }
+      c.update('none');
+    }
+  });
+  // Update map tiles on theme change
+  if (typeof updateMapTheme === 'function') updateMapTheme();
+}
+
+var emptyLabels = Array(60).fill('');
+var emptyData = Array(60).fill(0);
+
+try {
+  if (typeof Chart !== 'undefined') {
+    cpuChart = new Chart(document.getElementById('cpuChart'), {
+      type: 'line',
+      data: {
+        labels: emptyLabels.slice(),
+        datasets: [{
+          label: 'CPU %', data: emptyData.slice(),
+          borderColor: '#00D4FF', backgroundColor: 'rgba(0,212,255,0.1)', fill: true,
+        }]
+      },
+      options: { responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
+        interaction: { intersect: false, mode: 'index' },
+        plugins: { legend: { display: false }, tooltip: { enabled: true } },
+        scales: { x: { display: false }, y: {
+          grid: { color: getGridColor() }, max: 100, beginAtZero: true,
+          ticks: { color: getTickColor(), font: { size: 10 }, callback: function(v) { return v + '%'; } }
+        }},
+        elements: { point: { radius: 0 }, line: { tension: 0.3, borderWidth: 2 } },
+      }
+    });
+
+    netChart = new Chart(document.getElementById('netChart'), {
+      type: 'line',
+      data: {
+        labels: emptyLabels.slice(),
+        datasets: [
+          { label: 'Recibido', data: emptyData.slice(), borderColor: '#00D4FF', backgroundColor: 'rgba(0,212,255,0.1)', fill: true },
+          { label: 'Enviado', data: emptyData.slice(), borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,0.1)', fill: true },
+        ]
+      },
+      options: chartOpts(' kb/s')
+    });
+
+    ioChart = new Chart(document.getElementById('ioChart'), {
+      type: 'line',
+      data: {
+        labels: emptyLabels.slice(),
+        datasets: [
+          { label: 'Lectura', data: emptyData.slice(), borderColor: '#06b6d4', backgroundColor: 'rgba(6,182,212,0.1)', fill: true },
+          { label: 'Escritura', data: emptyData.slice(), borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,0.1)', fill: true },
+        ]
+      },
+      options: chartOpts(' kb/s')
+    });
+    // Attack charts
+    var attackBarOpts = function(showX) {
+      return {
+        responsive: true, maintainAspectRatio: false,
+        animation: { duration: 400 },
+        interaction: { intersect: false, mode: 'index' },
+        plugins: { legend: { display: false }, tooltip: { enabled: true } },
+        scales: {
+          x: { display: showX, grid: { color: getGridColor() }, ticks: { color: getTickColor(), font: { size: 10 } } },
+          y: { grid: { color: getGridColor() }, ticks: { color: getTickColor(), font: { size: 10 }, stepSize: 1 }, beginAtZero: true }
+        },
+      };
+    };
+
+    attackDailyChart = new Chart(document.getElementById('attackDailyChart'), {
+      type: 'bar',
+      data: { labels: [], datasets: [{ label: 'Ataques', data: [], backgroundColor: 'rgba(239,68,68,0.6)', borderColor: '#ef4444', borderWidth: 1, borderRadius: 4 }] },
+      options: attackBarOpts(true)
+    });
+
+    attackHourlyChart = new Chart(document.getElementById('attackHourlyChart'), {
+      type: 'bar',
+      data: { labels: [], datasets: [{ label: 'Ataques', data: [], backgroundColor: 'rgba(249,115,22,0.5)', borderColor: '#f97316', borderWidth: 1, borderRadius: 3 }] },
+      options: attackBarOpts(true)
+    });
+
+    dbg('Charts creados OK');
+  } else {
+    dbg('<span style="color:var(--yellow)">Chart.js no disponible - graficos desactivados</span>');
+  }
+} catch (chartErr) {
+  dbg('<span style="color:var(--red)">Error creando charts: ' + chartErr.message + '</span>');
+}
+
+// ---- Format helpers ----
+function fmtUptime(seconds) {
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (d > 0) return d + 'd ' + h + 'h';
+  if (h > 0) return h + 'h ' + m + 'm';
+  return m + 'm';
+}
+function fmtBytes(gb) { return gb >= 1 ? gb.toFixed(1) + ' GB' : (gb * 1024).toFixed(0) + ' MB'; }
+function fmtBytesRaw(bytes) {
+  if (bytes >= 1e12) return (bytes / 1e12).toFixed(1) + ' TB';
+  if (bytes >= 1e9) return (bytes / 1e9).toFixed(1) + ' GB';
+  if (bytes >= 1e6) return (bytes / 1e6).toFixed(1) + ' MB';
+  if (bytes >= 1e3) return (bytes / 1e3).toFixed(1) + ' KB';
+  return bytes + ' B';
+}
+function fmtGB(gb) {
+  if (gb >= 1024) return (gb / 1024).toFixed(1) + ' TB';
+  if (gb >= 1) return gb.toFixed(1) + ' GB';
+  return (gb * 1024).toFixed(0) + ' MB';
+}
+function timeAgo(dateStr) {
+  const diff = (Date.now() - new Date(dateStr).getTime()) / 1000;
+  if (diff < 60) return Math.floor(diff) + 's';
+  if (diff < 3600) return Math.floor(diff / 60) + 'm';
+  if (diff < 86400) return Math.floor(diff / 3600) + 'h';
+  return Math.floor(diff / 86400) + 'd';
+}
+function timeAgoMs(ms) {
+  const diff = (Date.now() - ms) / 1000;
+  if (diff < 60) return 'hace ' + Math.floor(diff) + 's';
+  if (diff < 3600) return 'hace ' + Math.floor(diff / 60) + 'm';
+  if (diff < 86400) return 'hace ' + Math.floor(diff / 3600) + 'h';
+  return 'hace ' + Math.floor(diff / 86400) + 'd';
+}
+function fmtDate(ts) {
+  if (!ts) return '';
+  const d = new Date(ts * 1000);
+  return d.toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+function fmtIsoDateTime(value) {
+  if (!value) return '---';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '---';
+  return d.toLocaleString('es-ES');
+}
+function escapeHtml(s) {
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML.replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+}
+
+// ---- Fetch info (once) ----
+async function fetchInfo() {
+  try {
+    const info = await api('/api/info');
+    const name = info.mirrored_hosts?.[0] || info.hostname || 'Servidor';
+    document.getElementById('hostname').textContent = name.replace('.local', '');
+    cores = info.cores_total || 10;
+    totalRamGB = (info.ram_total || 17179869184) / (1024 ** 3);
+  } catch {}
+}
+
+// ---- Fetch system info (once) ----
+async function fetchSystemInfo() {
+  try {
+    const d = await api('/api/system-info');
+    const el = document.getElementById('sysInfo');
+    const chips = [];
+    if (d.os_name) chips.push({ label: 'SO', val: d.os_name + (d.os_version ? ' ' + d.os_version : '') });
+    if (d.kernel) chips.push({ label: 'Kernel', val: (d.kernel || '') + ' ' + (d.kernel_version || '') });
+    if (d.architecture) chips.push({ label: 'Arch', val: d.architecture });
+    if (d.cores) chips.push({ label: 'Cores', val: d.cores });
+    if (d.ram_total) chips.push({ label: 'RAM Total', val: fmtBytesRaw(d.ram_total) });
+    if (d.virtualization) chips.push({ label: 'Virt', val: d.virtualization });
+    if (d.container) chips.push({ label: 'Container', val: d.container });
+
+    el.innerHTML = chips.map(c =>
+      `<div class="sys-chip fade-in"><span class="sys-chip-label">${c.label}</span><span class="sys-chip-val">${escapeHtml(String(c.val))}</span></div>`
+    ).join('');
+  } catch {}
+}
+
+// ---- Fetch system (3s) ----
+async function fetchSystem() {
+  if (paused) return;
+  try {
+    const d = await api('/api/system');
+    connected = true;
+    document.getElementById('connDot').classList.remove('offline');
+
+    // CPU
+    const cpuRow = d.cpu?.data?.[0];
+    if (cpuRow) {
+      const total = cpuRow.slice(1).reduce((a, b) => a + b, 0);
+      const cpuPct = Math.min(100, Math.max(0, total));
+      setGauge(cpuArc, cpuPct, document.getElementById('cpuVal'));
+      document.getElementById('cpuVal').textContent = cpuPct.toFixed(1) + '%';
+      document.getElementById('cpuSub').textContent = cores + ' cores';
+    }
+
+    // RAM
+    if (d.ram?.data?.[0]) {
+      const row = d.ram.data[0];
+      const labels = d.ram.labels;
+      const activeI = labels.indexOf('active');
+      const wiredI = labels.indexOf('wired');
+      const compI = labels.indexOf('compressor');
+      const inactiveI = labels.indexOf('inactive');
+      const freeI = labels.indexOf('free');
+      const totalMB = row.slice(1).reduce((a, b) => a + b, 0);
+      const usedMB = (row[activeI] || 0) + (row[wiredI] || 0) + (row[compI] || 0);
+      const usedPct = totalMB > 0 ? (usedMB / totalMB) * 100 : 0;
+      setGauge(ramArc, usedPct, document.getElementById('ramVal'));
+      document.getElementById('ramVal').textContent = usedPct.toFixed(1) + '%';
+      document.getElementById('ramSub').textContent = fmtBytes(usedMB / 1024) + ' / ' + fmtBytes(totalRamGB);
+
+      const segments = [
+        { label: 'Activa', color: '#00D4FF', val: row[activeI] || 0 },
+        { label: 'Cableada', color: '#8b5cf6', val: row[wiredI] || 0 },
+        { label: 'Comprimida', color: '#f97316', val: row[compI] || 0 },
+        { label: 'Inactiva', color: '#64748b', val: row[inactiveI] || 0 },
+        { label: 'Libre', color: '#00D4FF', val: row[freeI] || 0 },
+      ];
+      const bar = document.getElementById('memBar');
+      bar.innerHTML = segments.map(s =>
+        `<div style="width:${(s.val/totalMB*100).toFixed(2)}%;background:${s.color}" title="${s.label}: ${fmtBytes(s.val/1024)}"></div>`
+      ).join('');
+      const legend = document.getElementById('memLegend');
+      legend.innerHTML = segments.map(s =>
+        `<span class="mem-legend-item"><span class="mem-legend-dot" style="background:${s.color}"></span>${s.label} ${fmtBytes(s.val/1024)}</span>`
+      ).join('');
+    }
+
+    // Disk
+    if (d.disk?.data?.[0]) {
+      const labels = d.disk.labels;
+      const row = d.disk.data[0];
+      const usedI = labels.indexOf('used');
+      const availI = labels.indexOf('avail');
+      const used = row[usedI] || 0;
+      const avail = row[availI] || 0;
+      const total = used + avail;
+      const pct = total > 0 ? (used / total) * 100 : 0;
+      setGauge(diskArc, pct, document.getElementById('diskVal'));
+      document.getElementById('diskVal').textContent = pct.toFixed(1) + '%';
+      document.getElementById('diskSub').textContent = fmtBytes(used) + ' / ' + fmtBytes(total);
+    }
+
+    // Load
+    if (d.load?.data?.[0]) {
+      const row = d.load.data[0];
+      const maxLoad = cores;
+      [['load1', 1], ['load5', 2], ['load15', 3]].forEach(([id, i]) => {
+        const val = row[i] || 0;
+        const pct = Math.min(100, (val / maxLoad) * 100);
+        const fill = document.getElementById(id);
+        fill.style.width = pct + '%';
+        fill.style.background = pct > 90 ? 'var(--red)' : pct > 60 ? 'var(--yellow)' : 'var(--accent)';
+        document.getElementById(id + 'v').textContent = val.toFixed(2);
+      });
+    }
+
+    // Uptime
+    if (d.uptime?.data?.[0]) {
+      const secs = d.uptime.data[0][1];
+      document.getElementById('uptime').textContent = 'activo ' + fmtUptime(secs);
+    }
+  } catch (e) {
+    connected = false;
+    document.getElementById('connDot').classList.add('offline');
+  }
+}
+
+// ---- Fetch charts (3s) ----
+async function fetchCharts() {
+  if (paused || !cpuChart) return;
+  try {
+    var results = await Promise.all([
+      api('/api/cpu-history'), api('/api/net-history'), api('/api/io-history'),
+    ]);
+    var cpuH = results[0], netH = results[1], ioH = results[2];
+
+    if (cpuH && cpuH.data && cpuChart) {
+      var points = cpuH.data.reverse();
+      cpuChart.data.labels = points.map(function() { return ''; });
+      cpuChart.data.datasets[0].data = points.map(function(r) { return r.slice(1).reduce(function(a, b) { return a + b; }, 0); });
+      cpuChart.update('none');
+    }
+    if (netH && netH.data && netChart) {
+      var points2 = netH.data.reverse();
+      netChart.data.labels = points2.map(function() { return ''; });
+      netChart.data.datasets[0].data = points2.map(function(r) { return Math.abs(r[1] || 0); });
+      netChart.data.datasets[1].data = points2.map(function(r) { return Math.abs(r[2] || 0); });
+      netChart.update('none');
+    }
+    if (ioH && ioH.data && ioChart) {
+      var points3 = ioH.data.reverse();
+      ioChart.data.labels = points3.map(function() { return ''; });
+      ioChart.data.datasets[0].data = points3.map(function(r) { return Math.abs(r[1] || 0); });
+      ioChart.data.datasets[1].data = points3.map(function(r) { return Math.abs(r[2] || 0); });
+      ioChart.update('none');
+    }
+  } catch (e) { dbg('<span style="color:var(--red)">Charts error: ' + e.message + '</span>'); }
+}
+
+// ---- Storage ----
+async function fetchStorage() {
+  if (paused) return;
+  try {
+    const data = await api('/api/storage');
+    const el = document.getElementById('storageSection');
+
+    if (!Array.isArray(data) || data.length === 0) {
+      el.innerHTML = '<div class="empty-state">No se detectaron puntos de montaje</div>';
+      return;
+    }
+
+    // Sort: root first, then by usage desc
+    const sorted = data.sort((a, b) => {
+      if (a.mount === '/') return -1;
+      if (b.mount === '/') return 1;
+      return b.percent - a.percent;
+    });
+
+    el.innerHTML = '<div class="storage-grid">' + sorted.map(s => {
+      const color = s.percent > 90 ? 'var(--red)' : s.percent > 70 ? 'var(--yellow)' : 'var(--accent)';
+      const inodeColor = s.percent_inodes > 90 ? 'var(--red)' : s.percent_inodes > 70 ? 'var(--yellow)' : 'var(--text-dim)';
+      return `<div class="storage-item fade-in">
+        <div class="storage-header">
+          <span class="storage-mount">${escapeHtml(s.mount)}</span>
+          <span class="storage-pct" style="color:${color}">${s.percent.toFixed(1)}%</span>
+        </div>
+        <div class="storage-bar"><div class="storage-bar-fill" style="width:${s.percent.toFixed(1)}%;background:${color}"></div></div>
+        <div class="storage-details">
+          <span>Usado: <span class="storage-detail-val">${fmtGB(s.used)}</span></span>
+          <span>Libre: <span class="storage-detail-val">${fmtGB(s.avail)}</span></span>
+          <span>Total: <span class="storage-detail-val">${fmtGB(s.total)}</span></span>
+          ${s.reserved > 0 ? '<span>Reservado: <span class="storage-detail-val">' + fmtGB(s.reserved) + '</span></span>' : ''}
+          ${(s.io_reads > 0 || s.io_writes > 0) ? '<span>I/O: <span class="storage-detail-val">R ' + s.io_reads.toFixed(1) + ' / W ' + s.io_writes.toFixed(1) + ' KB/s</span></span>' : ''}
+          ${s.percent_inodes > 0 ? '<span>Inodos: <span class="storage-detail-val" style="color:' + inodeColor + '">' + s.percent_inodes.toFixed(1) + '%</span></span>' : ''}
+        </div>
+      </div>`;
+    }).join('') + '</div>';
+  } catch {
+    document.getElementById('storageSection').innerHTML = '<div class="empty-state">Error al cargar almacenamiento</div>';
+  }
+}
+
+// ---- Docker state ----
+function getRestoreStatusInfo(status) {
+  if (status === 'completed') return { cls: 'ok', label: 'Activo', text: 'Restauracion automatica completada' };
+  if (status === 'partial') return { cls: 'warn', label: 'Parcial', text: 'Algunos servicios no pudieron restaurarse' };
+  if (status === 'failed') return { cls: 'err', label: 'Fallo', text: 'La restauracion automatica fallo' };
+  if (status === 'running') return { cls: 'info', label: 'Ejecutando', text: 'Restaurando servicios guardados' };
+  if (status === 'scheduled') return { cls: 'info', label: 'Programado', text: 'Se ejecutara tras el arranque del monitor' };
+  if (status === 'skipped') return { cls: 'warn', label: 'Sin snapshot', text: 'No habia estado guardado para restaurar' };
+  if (status === 'disabled') return { cls: '', label: 'Desactivado', text: 'La restauracion automatica esta desactivada' };
+  return { cls: '', label: 'Estado', text: 'Estado de restauracion no disponible' };
+}
+
+function renderRestoreState() {
+  const el = document.getElementById('restoreSection');
+  if (!restoreStateInfo) {
+    el.innerHTML = '<div class="empty-state">No hay datos de restauracion disponibles</div>';
+    return;
+  }
+
+  const snapshot = restoreStateInfo.snapshot;
+  const runtime = restoreStateInfo.runtime || {};
+  const startup = runtime.startup_restore || {};
+  const lastRestore = runtime.last_restore || null;
+  const status = getRestoreStatusInfo(startup.status);
+
+  let html = '<div class="restore-toolbar">';
+  html += '<div>';
+  html += '<div class="restore-status-wrap">';
+  html += '<span class="restore-status-pill ' + status.cls + '">' + status.label + '</span>';
+  html += '<span class="restore-status-text">' + escapeHtml(status.text) + '</span>';
+  html += '</div>';
+  html += '</div>';
+  html += '<div class="restore-actions">';
+  html += '<button class="btn-sm" onclick="saveRestoreSnapshot(this)">Guardar snapshot</button>';
+  html += '<button class="btn-sm primary" onclick="triggerRestore(this)">Restaurar ahora</button>';
+  html += '</div>';
+  html += '</div>';
+
+  html += '<div class="restore-meta">';
+  html += '<span class="restore-chip">Auto-restore: <strong>' + (restoreStateInfo.enabled ? 'ON' : 'OFF') + '</strong></span>';
+  html += '<span class="restore-chip">Snapshot: <strong>' + (snapshot ? snapshot.tracked_count : 0) + '</strong> contenedores</span>';
+  html += '<span class="restore-chip">Stacks: <strong>' + (snapshot ? snapshot.project_count : 0) + '</strong></span>';
+  html += '<span class="restore-chip">Ultimo guardado: <strong>' + escapeHtml(snapshot ? fmtIsoDateTime(snapshot.captured_at) : '---') + '</strong></span>';
+  html += '</div>';
+
+  html += '<div class="restore-grid">';
+  html += '<div class="restore-panel">';
+  html += '<div class="restore-panel-title">Ultimo Snapshot</div>';
+  if (snapshot && Array.isArray(snapshot.containers) && snapshot.containers.length > 0) {
+    html += '<div class="restore-row"><span class="restore-row-label">Capturado</span><span class="restore-row-val">' + escapeHtml(fmtIsoDateTime(snapshot.captured_at)) + '</span></div>';
+    html += '<div class="restore-row"><span class="restore-row-label">Persistido</span><span class="restore-row-val">' + escapeHtml(runtime.last_persisted_at ? fmtIsoDateTime(runtime.last_persisted_at) : '---') + '</span></div>';
+    html += '<div class="restore-row"><span class="restore-row-label">Servicios activos</span><span class="restore-row-val">' + snapshot.tracked_count + '</span></div>';
+    html += '<div class="restore-row"><span class="restore-row-label">Stacks Compose</span><span class="restore-row-val">' + snapshot.project_count + '</span></div>';
+    html += '<div class="restore-panel-title" style="margin-top:12px">Contenedores guardados</div>';
+    html += '<div class="restore-list">' + snapshot.containers.slice(0, 12).map(function(container) {
+      return '<span class="restore-tag">' + escapeHtml(container.name) + '</span>';
+    }).join('') + '</div>';
+    if (snapshot.containers.length > 12) {
+      html += '<div class="restore-note" style="margin-top:10px">+' + (snapshot.containers.length - 12) + ' contenedores adicionales guardados en el snapshot.</div>';
+    }
+  } else {
+    html += '<div class="restore-note">Todavia no hay snapshot persistido. El monitor lo genera automaticamente con el conjunto actual de contenedores en ejecucion.</div>';
+  }
+  if (runtime.last_persist_error) {
+    html += '<div class="restore-note" style="margin-top:10px;color:var(--red)">Error de persistencia: ' + escapeHtml(runtime.last_persist_error) + '</div>';
+  }
+  html += '</div>';
+
+  html += '<div class="restore-panel">';
+  html += '<div class="restore-panel-title">Ultimo Intento de Restauracion</div>';
+  if (lastRestore) {
+    html += '<div class="restore-row"><span class="restore-row-label">Origen</span><span class="restore-row-val">' + escapeHtml(lastRestore.trigger || 'manual') + '</span></div>';
+    html += '<div class="restore-row"><span class="restore-row-label">Intento</span><span class="restore-row-val">' + escapeHtml(fmtIsoDateTime(lastRestore.attempted_at)) + '</span></div>';
+    html += '<div class="restore-row"><span class="restore-row-label">Arrancados</span><span class="restore-row-val">' + lastRestore.started.length + '</span></div>';
+    html += '<div class="restore-row"><span class="restore-row-label">Ya activos</span><span class="restore-row-val">' + lastRestore.already_running.length + '</span></div>';
+    html += '<div class="restore-row"><span class="restore-row-label">No encontrados</span><span class="restore-row-val">' + lastRestore.missing.length + '</span></div>';
+    html += '<div class="restore-row"><span class="restore-row-label">Fallidos</span><span class="restore-row-val">' + lastRestore.failed.length + '</span></div>';
+    if (lastRestore.message) {
+      html += '<div class="restore-note" style="margin-top:10px">' + escapeHtml(lastRestore.message) + '</div>';
+    }
+    if (lastRestore.started.length > 0) {
+      html += '<div class="restore-panel-title" style="margin-top:12px">Arrancados</div>';
+      html += '<div class="restore-list">' + lastRestore.started.map(function(name) {
+        return '<span class="restore-tag">' + escapeHtml(name) + '</span>';
+      }).join('') + '</div>';
+    }
+    if (lastRestore.failed.length > 0) {
+      html += '<div class="restore-panel-title" style="margin-top:12px">Errores</div>';
+      lastRestore.failed.forEach(function(entry) {
+        html += '<div class="restore-note" style="color:var(--red)">' + escapeHtml(entry.name + ': ' + entry.error) + '</div>';
+      });
+    }
+  } else {
+    html += '<div class="restore-note">Aun no se ha ejecutado ninguna restauracion manual ni automatica en esta sesion.</div>';
+  }
+  html += '</div>';
+  html += '</div>';
+
+  el.innerHTML = html;
+}
+
+async function fetchRestoreState() {
+  if (paused) return;
+  try {
+    restoreStateInfo = await api('/api/restore-state');
+    renderRestoreState();
+  } catch {
+    document.getElementById('restoreSection').innerHTML = '<div class="empty-state" style="color:var(--red)">Error al cargar el estado de restauracion</div>';
+  }
+}
+
+async function saveRestoreSnapshot(btn) {
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Guardando...';
+  try {
+    restoreStateInfo = await api('/api/restore-state/snapshot', { method: 'POST', timeoutMs: 20000 });
+    renderRestoreState();
+    btn.textContent = 'Guardado';
+    setTimeout(fetchRestoreState, 800);
+  } catch {
+    btn.textContent = 'Error';
+  }
+  setTimeout(function() {
+    btn.disabled = false;
+    btn.textContent = original;
+  }, 1800);
+}
+
+async function triggerRestore(btn) {
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Restaurando...';
+  try {
+    restoreStateInfo = await api('/api/restore-state/restore', { method: 'POST', timeoutMs: 45000 });
+    renderRestoreState();
+    btn.textContent = 'Hecho';
+    setTimeout(fetchDocker, 1200);
+    setTimeout(fetchDockerStats, 3500);
+    setTimeout(fetchRestoreState, 4000);
+  } catch {
+    btn.textContent = 'Error';
+  }
+  setTimeout(function() {
+    btn.disabled = false;
+    btn.textContent = original;
+  }, 2200);
+}
+
+let dockerContainers = [];
+let dockerStats = {};
+let dockerPage = 0;
+const DOCKER_PER_PAGE = 6;
+
+function renderDockerCards() {
+  const el = document.getElementById('dockerSection');
+  if (dockerContainers.length === 0) {
+    el.innerHTML = '<div class="empty-state">No se encontraron contenedores</div>';
+    document.getElementById('dockerCount').textContent = '';
+    return;
+  }
+
+  const running = dockerContainers.filter(c => c.State === 'running').length;
+  document.getElementById('dockerCount').textContent = `(${running}/${dockerContainers.length} activos)`;
+
+  const sorted = [...dockerContainers].sort((a, b) => {
+    const sa = a.State === 'running' ? 0 : 1;
+    const sb = b.State === 'running' ? 0 : 1;
+    return sa - sb || (a.Names?.[0] || '').localeCompare(b.Names?.[0] || '');
+  });
+
+  const totalPages = Math.ceil(sorted.length / DOCKER_PER_PAGE);
+  if (dockerPage >= totalPages) dockerPage = totalPages - 1;
+  if (dockerPage < 0) dockerPage = 0;
+  const pageItems = sorted.slice(dockerPage * DOCKER_PER_PAGE, (dockerPage + 1) * DOCKER_PER_PAGE);
+
+  const cardsHtml = '<div class="docker-grid">' + pageItems.map(c => {
+    const name = escapeHtml((c.Names?.[0] || '').replace(/^\//, ''));
+    const state = c.State || 'unknown';
+    const dotClass = state === 'running' ? 'running' : state === 'paused' ? 'paused' : 'stopped';
+    const status = escapeHtml(c.Status || state);
+    const image = escapeHtml((c.Image || '').split('/').pop());
+    const st = dockerStats[c.Id];
+
+    let statsHtml = '';
+    if (st && state === 'running') {
+      const cpuColor = st.cpu_percent > 80 ? 'var(--red)' : st.cpu_percent > 50 ? 'var(--yellow)' : 'var(--accent)';
+      const memPct = st.mem_limit > 0 ? (st.mem_usage / st.mem_limit * 100) : 0;
+      const memColor = memPct > 80 ? 'var(--red)' : memPct > 50 ? 'var(--yellow)' : 'var(--accent)';
+      statsHtml = `<div class="docker-stats-row">
+        <div class="docker-stat">
+          <span class="docker-stat-label">CPU</span>
+          <span class="docker-stat-val" style="color:${cpuColor}">${st.cpu_percent.toFixed(1)}%</span>
+          <div class="docker-mini-bar"><div class="docker-mini-fill" style="width:${Math.min(st.cpu_percent, 100).toFixed(0)}%;background:${cpuColor}"></div></div>
+        </div>
+        <div class="docker-stat">
+          <span class="docker-stat-label">MEM</span>
+          <span class="docker-stat-val" style="color:${memColor}">${fmtBytesRaw(st.mem_usage)}</span>
+          <div class="docker-mini-bar"><div class="docker-mini-fill" style="width:${Math.min(memPct, 100).toFixed(0)}%;background:${memColor}"></div></div>
+        </div>
+        <div class="docker-stat">
+          <span class="docker-stat-label">RED</span>
+          <span class="docker-stat-val">${fmtBytesRaw(st.net_rx + st.net_tx)}</span>
+        </div>
+        <div class="docker-stat">
+          <span class="docker-stat-label">PIDs</span>
+          <span class="docker-stat-val">${st.pids}</span>
+        </div>
+      </div>`;
+    } else if (state === 'running' && !st) {
+      statsHtml = '<div class="docker-stats-row" style="justify-content:center;color:var(--text-muted);font-size:0.72rem"><div class="spinner" style="width:12px;height:12px;border-width:1.5px"></div> Cargando stats...</div>';
+    }
+
+    return `<div class="docker-card" onclick="showDockerDetail('${c.Id}')" title="Clic para ver detalles">
+      <div style="width:100%">
+        <div class="docker-card-header">
+          <div class="docker-dot ${dotClass}"></div>
+          <div style="min-width:0">
+            <div class="docker-name">${name}</div>
+            <div class="docker-status">${status}</div>
+            <div class="docker-image">${image}</div>
+          </div>
+        </div>
+        ${statsHtml}
+      </div>
+    </div>`;
+  }).join('') + '</div>';
+
+  let pagerHtml = '';
+  if (totalPages > 1) {
+    const dots = Array.from({ length: totalPages }, (_, i) =>
+      '<div class="docker-pager-dot' + (i === dockerPage ? ' active' : '') + '"></div>'
+    ).join('');
+    pagerHtml = `<div class="docker-pager">
+      <button class="docker-pager-btn" onclick="dockerPageNav(-1)" ${dockerPage === 0 ? 'disabled' : ''}>&#9664; Ant</button>
+      <div class="docker-pager-dots">${dots}</div>
+      <span class="docker-pager-info">${dockerPage + 1} / ${totalPages}</span>
+      <button class="docker-pager-btn" onclick="dockerPageNav(1)" ${dockerPage === totalPages - 1 ? 'disabled' : ''}>Sig &#9654;</button>
+    </div>`;
+  }
+
+  el.innerHTML = cardsHtml + pagerHtml;
+}
+
+function dockerPageNav(dir) {
+  dockerPage += dir;
+  renderDockerCards();
+}
+
+// Phase 1: Fast container list
+async function fetchDocker() {
+  if (paused) return;
+  try {
+    const containers = await api('/api/docker');
+    if (!Array.isArray(containers)) return;
+    dockerContainers = containers;
+    renderDockerCards();
+  } catch {
+    document.getElementById('dockerSection').innerHTML = '<div class="empty-state" style="color:var(--red)">Error al cargar contenedores</div>';
+  }
+}
+
+// Phase 2: Stats loaded in background (slow, ~1s per container)
+async function fetchDockerStats() {
+  if (paused) return;
+  try {
+    const stats = await api('/api/docker-stats', 30000);
+    if (Array.isArray(stats)) {
+      stats.forEach(s => { dockerStats[s.id] = s; });
+      renderDockerCards();
+    }
+  } catch {}
+}
+
+// ---- Docker Detail Panel ----
+async function showDockerDetail(containerId) {
+  const overlay = document.getElementById('dockerDetailOverlay');
+  overlay.style.display = 'flex';
+  overlay.className = 'docker-detail-overlay';
+  overlay.innerHTML = '<div class="docker-detail-panel"><div class="loading"><div class="spinner"></div>Cargando detalles...</div></div>';
+
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) closeDockerDetail();
+  });
+
+  try {
+    const d = await api('/api/docker/' + containerId + '/stats');
+    const cpuColor = d.cpu_percent > 80 ? 'var(--red)' : d.cpu_percent > 50 ? 'var(--yellow)' : 'var(--accent)';
+    const memColor = d.mem_percent > 80 ? 'var(--red)' : d.mem_percent > 50 ? 'var(--yellow)' : 'var(--accent)';
+    const c = dockerContainers.find(x => x.Id === containerId);
+    const name = escapeHtml((c?.Names?.[0] || '').replace(/^\//, '') || containerId.slice(0, 12));
+    const state = c?.State || 'unknown';
+    const dotClass = state === 'running' ? 'running' : state === 'paused' ? 'paused' : 'stopped';
+
+    let html = `<div class="docker-detail-header">
+      <div class="docker-detail-title"><div class="docker-dot ${dotClass}"></div>${name}</div>
+      <button class="docker-detail-close" onclick="closeDockerDetail()">Cerrar</button>
+    </div>`;
+
+    // Stats grid
+    html += `<div class="docker-detail-grid">
+      <div class="docker-detail-stat">
+        <div class="docker-detail-stat-label">CPU</div>
+        <div class="docker-detail-stat-val" style="color:${cpuColor}">${d.cpu_percent.toFixed(2)}%</div>
+      </div>
+      <div class="docker-detail-stat">
+        <div class="docker-detail-stat-label">Memoria</div>
+        <div class="docker-detail-stat-val" style="color:${memColor}">${fmtBytesRaw(d.mem_usage)}<span style="font-size:0.7rem;color:var(--text-dim);font-weight:400"> / ${fmtBytesRaw(d.mem_limit)}</span></div>
+      </div>
+      <div class="docker-detail-stat">
+        <div class="docker-detail-stat-label">Red RX / TX</div>
+        <div class="docker-detail-stat-val" style="font-size:1rem"><span style="color:#00D4FF">${fmtBytesRaw(d.net_rx)}</span> <span style="color:var(--text-muted)">/</span> <span style="color:#8b5cf6">${fmtBytesRaw(d.net_tx)}</span></div>
+      </div>
+      <div class="docker-detail-stat">
+        <div class="docker-detail-stat-label">Disco R / W</div>
+        <div class="docker-detail-stat-val" style="font-size:1rem"><span style="color:#06b6d4">${fmtBytesRaw(d.block_read)}</span> <span style="color:var(--text-muted)">/</span> <span style="color:#f97316">${fmtBytesRaw(d.block_write)}</span></div>
+      </div>
+    </div>`;
+
+    // Info rows
+    html += '<div class="docker-detail-section"><div class="docker-detail-section-title">Informacion General</div>';
+    const infoRows = [
+      ['Imagen', d.image],
+      ['Comando', d.cmd],
+      ['PIDs', d.pids],
+      ['Reintentos', d.restart_count],
+      ['Politica de Reinicio', d.restart_policy],
+    ];
+    if (d.created) infoRows.push(['Creado', new Date(d.created).toLocaleString('es-ES')]);
+    if (d.started) infoRows.push(['Iniciado', new Date(d.started).toLocaleString('es-ES')]);
+    infoRows.forEach(([k, v]) => {
+      if (v !== undefined && v !== '') {
+        html += `<div class="docker-detail-row"><span class="docker-detail-key">${k}</span><span class="docker-detail-val">${escapeHtml(String(v))}</span></div>`;
+      }
+    });
+    html += '</div>';
+
+    // Ports
+    if (d.ports && d.ports.length > 0) {
+      html += '<div class="docker-detail-section"><div class="docker-detail-section-title">Puertos</div>';
+      d.ports.forEach(p => {
+        html += `<div class="docker-detail-row"><span class="docker-detail-key">${escapeHtml(p.container)}</span><span class="docker-detail-val">${p.host ? escapeHtml(p.host) : '<span style="color:var(--text-muted)">sin mapear</span>'}</span></div>`;
+      });
+      html += '</div>';
+    }
+
+    // Env vars
+    if (d.env && d.env.length > 0) {
+      html += '<div class="docker-detail-section"><div class="docker-detail-section-title">Variables de Entorno</div>';
+      d.env.forEach(e => {
+        const [k, ...vParts] = e.split('=');
+        const v = vParts.join('=');
+        html += `<div class="docker-detail-row"><span class="docker-detail-key">${escapeHtml(k)}</span><span class="docker-detail-val">${escapeHtml(v)}</span></div>`;
+      });
+      html += '</div>';
+    }
+
+    overlay.innerHTML = `<div class="docker-detail-panel">${html}</div>`;
+  } catch {
+    overlay.innerHTML = '<div class="docker-detail-panel"><div class="empty-state" style="color:var(--red)">Error al cargar detalles del contenedor</div><button class="docker-detail-close" onclick="closeDockerDetail()" style="margin:16px auto;display:block">Cerrar</button></div>';
+  }
+}
+
+function closeDockerDetail() {
+  const overlay = document.getElementById('dockerDetailOverlay');
+  overlay.style.display = 'none';
+  overlay.innerHTML = '';
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { closeDockerDetail(); closeIpDetail(); }
+});
+
+// ---- Fetch Alarms (30s) ----
+async function fetchAlarms() {
+  if (paused) return;
+  try {
+    const data = await api('/api/alarms');
+    const alarms = data?.alarms || {};
+    const active = Object.values(alarms).filter(a => a.status === 'WARNING' || a.status === 'CRITICAL');
+    const card = document.getElementById('alarmsCard');
+    const el = document.getElementById('alarmsSection');
+    if (active.length === 0) { card.style.display = 'none'; return; }
+    card.style.display = 'block';
+    el.innerHTML = active.map(a => {
+      const cls = a.status === 'CRITICAL' ? 'alarm-crit' : 'alarm-warn';
+      return `<div class="alarm-item"><span class="alarm-badge ${cls}">${a.status}</span> <span>${escapeHtml(a.name)}</span> <span style="color:var(--text-dim);margin-left:auto">${escapeHtml(a.info || '')}</span></div>`;
+    }).join('');
+  } catch {}
+}
+
+// ---- Fetch Security (30s) ----
+async function fetchSecurity() {
+  if (paused) return;
+  try {
+    const data = await api('/api/security');
+    const el = document.getElementById('securitySection');
+    const isUp = data.health?.status === 'up';
+    const alerts = Array.isArray(data.alerts) ? data.alerts : [];
+    const decisions = Array.isArray(data.decisions) ? data.decisions : [];
+
+    const scenarioCounts = {};
+    alerts.forEach(a => {
+      const s = a.scenario || 'desconocido';
+      scenarioCounts[s] = (scenarioCounts[s] || 0) + 1;
+    });
+
+    // Threat level
+    let threatLevel = 'low';
+    let threatTitle = 'Nivel Bajo';
+    let threatDesc = 'No se detectan amenazas activas significativas.';
+    if (decisions.length > 5 || alerts.length > 5) {
+      threatLevel = 'medium';
+      threatTitle = 'Nivel Medio';
+      threatDesc = `${decisions.length} IPs bloqueadas y ${alerts.length} alertas recientes.`;
+    }
+    if (decisions.length > 20 || alerts.length > 8) {
+      threatLevel = 'high';
+      threatTitle = 'Nivel Alto';
+      threatDesc = `Actividad elevada: ${decisions.length} bloqueos y ${alerts.length} alertas. Revisar inmediatamente.`;
+    }
+
+    let html = `<div class="threat-level">
+      <div class="threat-level-indicator threat-${threatLevel}">${threatLevel === 'low' ? '&#10003;' : threatLevel === 'medium' ? '!' : '!!'}</div>
+      <div class="threat-info">
+        <div class="threat-title">${threatTitle}</div>
+        <div class="threat-desc">${threatDesc}</div>
+      </div>
+    </div>`;
+
+    html += `<div class="sec-status">
+      <span class="sec-badge ${isUp ? 'up' : 'down'}">${isUp ? 'CrowdSec Activo' : 'CrowdSec Sin Conexion'}</span>
+    </div>
+    <div class="sec-stats">
+      <span>IPs Bloqueadas: <span class="sec-stat-val">${decisions.length}</span></span>
+      <span>Alertas Recientes: <span class="sec-stat-val">${alerts.length}</span></span>
+      <span>Escenarios: <span class="sec-stat-val">${Object.keys(scenarioCounts).length}</span></span>
+    </div>`;
+
+    if (Object.keys(scenarioCounts).length > 0) {
+      html += '<div style="margin-top:14px;font-size:0.78rem;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:0.08em">Escenarios Detectados</div>';
+      html += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">';
+      Object.entries(scenarioCounts).sort((a,b) => b[1]-a[1]).forEach(([s, count]) => {
+        html += `<span style="background:var(--accent-light);color:var(--accent);padding:4px 10px;border-radius:20px;font-size:0.75rem;font-weight:500;border:1px solid rgba(0,212,255,0.3)">${escapeHtml(s.split('/').pop())} <strong>${count}</strong></span>`;
+      });
+      html += '</div>';
+    }
+
+    if (alerts.length > 0) {
+      html += '<div style="margin-top:14px;font-size:0.78rem;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:0.08em">Alertas Recientes</div>';
+      html += '<div class="alert-list scrollable">';
+      alerts.slice(0, 15).forEach(a => {
+        const scenario = escapeHtml(a.scenario || a.message || 'Desconocido');
+        const time = a.created_at ? timeAgo(a.created_at) : '';
+        const src = a.source?.ip || a.source?.scope || '';
+        const eventsCount = a.events_count || '';
+        const srcClickable = src && /\d+\.\d+\.\d+\.\d+/.test(src);
+        html += `<div class="alert-item">
+          <span><span class="alert-scenario">${scenario}</span>${src ? ' <span class="alert-source ip-clickable" onclick="showIpDetail(\'' + escapeHtml(src) + '\')" style="cursor:pointer">(' + escapeHtml(src) + ')</span>' : ''}${eventsCount ? ' <span style="color:var(--text-muted);font-size:0.72rem">' + eventsCount + ' eventos</span>' : ''}</span>
+          <span class="alert-time">${time}</span>
+        </div>`;
+      });
+      html += '</div>';
+    }
+
+    if (decisions.length > 0) {
+      html += '<div style="margin-top:14px;font-size:0.78rem;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:0.08em">IPs Bloqueadas</div>';
+      html += '<div class="alert-list scrollable">';
+      decisions.slice(0, 10).forEach(d => {
+        const typeColor = d.type === 'ban' ? 'var(--red)' : 'var(--yellow)';
+        html += `<div class="alert-item">
+          <span>
+            <span style="background:${d.type === 'ban' ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)'};color:${typeColor};padding:2px 8px;border-radius:6px;font-size:0.7rem;font-weight:700;text-transform:uppercase;margin-right:8px">${escapeHtml(d.type || 'ban')}</span>
+            <span class="alert-scenario ip-clickable" onclick="showIpDetail('${escapeHtml(d.value || '')}')" style="cursor:pointer">${escapeHtml(d.value || '')}</span>
+            <span class="alert-source">${escapeHtml(d.scenario || '')}</span>
+          </span>
+          <span class="alert-time">${escapeHtml(d.duration || '')}</span>
+        </div>`;
+      });
+      html += '</div>';
+    }
+
+    el.innerHTML = html;
+  } catch {
+    document.getElementById('securitySection').innerHTML = '<div class="empty-state">CrowdSec no disponible</div>';
+  }
+}
+
+// ---- Fetch Alerts Status (30s) ----
+async function fetchAlertStatus() {
+  if (paused) return;
+  try {
+    const data = await api('/api/alerts/status');
+    const el = document.getElementById('alertsSection');
+
+    const typeLabels = {
+      cpu_high: { label: 'CPU', bg: 'rgba(239,68,68,0.15)', color: 'var(--red)' },
+      ram_high: { label: 'RAM', bg: 'rgba(245,158,11,0.15)', color: 'var(--yellow)' },
+      disk_high: { label: 'DISCO', bg: 'rgba(139,92,246,0.15)', color: 'var(--purple)' },
+      server_down: { label: 'CAIDA', bg: 'rgba(239,68,68,0.15)', color: 'var(--red)' },
+      server_up: { label: 'RECUPERADO', bg: 'rgba(0,212,255,0.15)', color: 'var(--green)' },
+      container_down: { label: 'CONTENEDOR', bg: 'rgba(249,115,22,0.15)', color: 'var(--orange)' },
+      container_restart: { label: 'REINICIO', bg: 'rgba(6,182,212,0.15)', color: 'var(--cyan)' },
+      security_alert: { label: 'ATAQUE', bg: 'rgba(239,68,68,0.15)', color: 'var(--red)' },
+      security_ban: { label: 'BAN', bg: 'rgba(239,68,68,0.15)', color: 'var(--red)' },
+    };
+
+    let html = '<div class="alerts-header">';
+    // Telegram status
+    const dotClass = !data.configured ? 'unknown' : data.telegramOk === true ? 'ok' : data.telegramOk === false ? 'err' : 'unknown';
+    const statusText = !data.configured ? 'No configurado' : data.telegramOk === true ? 'Conectado' : data.telegramOk === false ? 'Error de envio' : 'Sin verificar';
+    html += `<div class="alerts-tg-status">
+      <div class="alerts-tg-dot ${dotClass}"></div>
+      <span style="color:var(--text-dim)">${statusText}</span>
+    </div>`;
+    html += `<button class="btn-sm" onclick="testTelegram(this)" ${!data.configured ? 'disabled' : ''}>Enviar Test</button>`;
+    html += '</div>';
+
+    if (!data.configured) {
+      html += '<div class="empty-state">Telegram no configurado. Anade <code style="background:var(--surface2);padding:2px 6px;border-radius:4px">TELEGRAM_BOT_TOKEN</code> y <code style="background:var(--surface2);padding:2px 6px;border-radius:4px">TELEGRAM_CHAT_ID</code> al archivo .env</div>';
+    } else {
+      // Healthcheck status
+      if (data.healthcheck) {
+        const hc = data.healthcheck;
+        let hcDot = 'unknown', hcText = 'No configurado';
+        if (hc.configured) {
+          hcDot = hc.ok === true ? 'ok' : hc.ok === false ? 'err' : 'unknown';
+          hcText = hc.ok === true ? 'Activo (' + timeAgoMs(hc.lastPing) + ')' : hc.ok === false ? 'Error de ping' : 'Esperando primer ping...';
+        }
+        html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+          <span style="font-size:0.78rem;color:var(--text-dim);font-weight:600">Heartbeat:</span>
+          <div class="alerts-tg-dot ${hcDot}"></div>
+          <span style="font-size:0.78rem;color:var(--text-dim)">${hcText}</span>
+        </div>`;
+      }
+
+      // Alert types monitored
+      html += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">';
+      const monitorTypes = [
+        { label: 'CPU > 90%', color: 'var(--red)' },
+        { label: 'RAM > 90%', color: 'var(--yellow)' },
+        { label: 'Disco > 85%', color: 'var(--purple)' },
+        { label: 'Servidor caido', color: 'var(--red)' },
+        { label: 'Contenedor caido', color: 'var(--orange)' },
+        { label: 'Ataques', color: 'var(--red)' },
+        { label: 'IPs baneadas', color: 'var(--red)' },
+      ];
+      monitorTypes.forEach(t => {
+        html += `<span style="background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:4px 10px;font-size:0.72rem;color:var(--text-dim)"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${t.color};margin-right:4px"></span>${t.label}</span>`;
+      });
+      html += '</div>';
+
+      // History
+      if (data.history && data.history.length > 0) {
+        html += '<div style="font-size:0.78rem;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">Historial de Alertas Enviadas</div>';
+        html += '<div class="scrollable">';
+        data.history.forEach(h => {
+          const tl = typeLabels[h.type] || { label: h.type, bg: 'var(--surface2)', color: 'var(--text-dim)' };
+          html += `<div class="alert-history-item">
+            <span class="alert-type-badge" style="background:${tl.bg};color:${tl.color};border:1px solid ${tl.color}30">${tl.label}</span>
+            <span style="flex:1;color:var(--text)">${escapeHtml(h.title)}</span>
+            <span class="${h.sent ? 'alert-sent-ok' : 'alert-sent-fail'}" style="font-size:0.72rem;flex-shrink:0">${h.sent ? 'Enviado' : 'Fallido'}</span>
+            <span class="alert-time">${timeAgoMs(h.time)}</span>
+          </div>`;
+        });
+        html += '</div>';
+      } else {
+        html += '<div class="empty-state" style="padding:14px">No se han enviado alertas todavia. El sistema esta monitorizando activamente.</div>';
+      }
+    }
+
+    el.innerHTML = html;
+  } catch {
+    document.getElementById('alertsSection').innerHTML = '<div class="empty-state">Error al cargar estado de alertas</div>';
+  }
+}
+
+// Test Telegram button
+async function testTelegram(btn) {
+  btn.disabled = true;
+  btn.textContent = 'Enviando...';
+  try {
+    const r = await fetch('/api/alerts/test', { method: 'POST' });
+    const data = await r.json();
+    if (data.ok) {
+      btn.textContent = 'Enviado!';
+      btn.style.borderColor = 'var(--green)';
+      btn.style.color = 'var(--green)';
+    } else {
+      btn.textContent = 'Error';
+      btn.style.borderColor = 'var(--red)';
+      btn.style.color = 'var(--red)';
+    }
+    setTimeout(() => fetchAlertStatus(), 1000);
+  } catch {
+    btn.textContent = 'Error';
+    btn.style.borderColor = 'var(--red)';
+    btn.style.color = 'var(--red)';
+  }
+  setTimeout(() => {
+    btn.disabled = false;
+    btn.textContent = 'Enviar Test';
+    btn.style.borderColor = '';
+    btn.style.color = '';
+  }, 3000);
+}
+
+// ---- Fetch Processes (10s) ----
+async function fetchProcesses() {
+  if (paused) return;
+  try {
+    const data = await api('/api/processes');
+    const el = document.getElementById('processSection');
+
+    if (!Array.isArray(data) || data.length === 0) {
+      el.innerHTML = '<div class="empty-state">No hay procesos activos</div>';
+      return;
+    }
+
+    const maxCpu = Math.max(...data.map(p => p.cpu), 0.1);
+    const maxMem = Math.max(...data.map(p => p.mem), 0.1);
+    const colors = ['#00D4FF', '#6366f1', '#f59e0b', '#ef4444', '#00D4FF', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#3b82f6', '#00D4FF', '#a855f7'];
+
+    function cleanName(n) {
+      return n.replace(/_app$/, '').replace(/_xpc$/, '').replace(/_service$/, '').replace(/_appex$/, '').replace(/_framework$/, '').replace(/_/g, ' ');
+    }
+
+    let html = '<div class="scrollable"><table class="proc-table"><thead><tr><th>Proceso</th><th style="width:30%">CPU</th><th style="text-align:right;width:65px">CPU %</th><th style="width:25%">MEM</th><th style="text-align:right;width:70px">MEM (MB)</th></tr></thead><tbody>';
+    data.forEach((p, i) => {
+      const cpuPct = maxCpu > 0 ? (p.cpu / maxCpu * 100).toFixed(0) : 0;
+      const memPct = maxMem > 0 ? (p.mem / maxMem * 100).toFixed(0) : 0;
+      const col = colors[i % colors.length];
+      html += `<tr>
+        <td class="proc-name">${escapeHtml(cleanName(p.name))}</td>
+        <td><div class="proc-bar-track"><div class="proc-bar-fill" style="width:${cpuPct}%;background:${col}"></div></div></td>
+        <td style="text-align:right;color:${col}">${p.cpu.toFixed(1)}%</td>
+        <td><div class="proc-bar-track"><div class="proc-bar-fill" style="width:${memPct}%;background:${col};opacity:0.7"></div></div></td>
+        <td style="text-align:right">${p.mem.toFixed(1)}</td>
+      </tr>`;
+    });
+    html += '</tbody></table></div>';
+    el.innerHTML = html;
+  } catch {
+    document.getElementById('processSection').innerHTML = '<div class="empty-state">Error al cargar procesos</div>';
+  }
+}
+
+// ---- Fetch Network Interfaces (30s) ----
+async function fetchNetInterfaces() {
+  if (paused) return;
+  try {
+    const data = await api('/api/network-interfaces');
+    const el = document.getElementById('netIfaceSection');
+
+    if (!Array.isArray(data) || data.length === 0) {
+      el.innerHTML = '<div class="empty-state">No se detectaron interfaces de red</div>';
+      return;
+    }
+
+    const ifColors = ['#00D4FF', '#6366f1', '#00D4FF', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899'];
+
+    el.innerHTML = '<div class="net-iface-grid">' + data.map((iface, idx) => {
+      const received = iface.data?.data?.[0]?.[1] || 0;
+      const sent = iface.data?.data?.[0]?.[2] || 0;
+      const col = ifColors[idx % ifColors.length];
+      return `<div class="net-iface-card fade-in">
+        <div class="net-iface-name">
+          <span style="width:8px;height:8px;border-radius:50%;background:${col};display:inline-block"></span>
+          ${escapeHtml(iface.family || iface.name || iface.id)}
+        </div>
+        <div class="net-iface-stat"><span>Recibido</span><span class="net-iface-val" style="color:#00D4FF">${Math.abs(received).toFixed(1)} kb/s</span></div>
+        <div class="net-iface-stat"><span>Enviado</span><span class="net-iface-val" style="color:#8b5cf6">${Math.abs(sent).toFixed(1)} kb/s</span></div>
+        <div class="net-iface-stat" style="margin-top:4px;padding-top:4px;border-top:1px solid var(--border)"><span>Total</span><span class="net-iface-val">${(Math.abs(received) + Math.abs(sent)).toFixed(1)} kb/s</span></div>
+      </div>`;
+    }).join('') + '</div>';
+  } catch {
+    document.getElementById('netIfaceSection').innerHTML = '<div class="empty-state">Error al cargar interfaces de red</div>';
+  }
+}
+
+// ---- Fetch Logs (30s) ----
+async function fetchLogs() {
+  if (paused) return;
+  try {
+    const data = await api('/api/logs');
+    const el = document.getElementById('logsSection');
+
+    if (!Array.isArray(data) || data.length === 0) {
+      el.innerHTML = '<div class="empty-state">No hay eventos recientes</div>';
+      return;
+    }
+
+    const statusMap = {
+      'WARNING': { cls: 'alarm-warn', label: 'AVISO' },
+      'CRITICAL': { cls: 'alarm-crit', label: 'CRITICO' },
+      'CLEAR': { cls: 'alarm-clear', label: 'OK' },
+      'REMOVED': { cls: 'alarm-clear', label: 'ELIMINADO' },
+    };
+
+    let html = '<div class="scrollable">';
+    data.slice(0, 20).forEach(entry => {
+      const status = statusMap[entry.new_status] || statusMap[entry.status] || { cls: 'alarm-clear', label: entry.new_status || entry.status || '?' };
+      const time = fmtDate(entry.when);
+      const name = escapeHtml(entry.name || '');
+      const chart = escapeHtml(entry.chart || '');
+      const info = escapeHtml(entry.info || '');
+      html += `<div class="log-entry">
+        <span class="log-time">${time}</span>
+        <span class="alarm-badge ${status.cls}">${status.label}</span>
+        <span class="log-msg"><span class="log-chart">${chart}</span> ${name}${info ? ' &mdash; ' + info : ''}</span>
+      </div>`;
+    });
+    html += '</div>';
+    el.innerHTML = html;
+  } catch {
+    document.getElementById('logsSection').innerHTML = '<div class="empty-state">Error al cargar eventos</div>';
+  }
+}
+
+// ---- Attack Map (Leaflet) ----
+var attackMap = null;
+var attackMarkers = [];
+var currentTileLayer = null;
+
+function getMapTileUrl() {
+  const theme = document.documentElement.getAttribute('data-theme');
+  return theme === 'light'
+    ? 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
+    : 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+}
+
+function initAttackMap() {
+  if (attackMap || typeof L === 'undefined') return;
+  const container = document.getElementById('attackMapContainer');
+  container.innerHTML = '';
+  attackMap = L.map(container, { zoomControl: true, attributionControl: true, scrollWheelZoom: true }).setView([30, 0], 2);
+  currentTileLayer = L.tileLayer(getMapTileUrl(), {
+    attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 18,
+  }).addTo(attackMap);
+  setTimeout(() => attackMap.invalidateSize(), 200);
+}
+
+function updateMapTheme() {
+  if (!attackMap || !currentTileLayer) return;
+  attackMap.removeLayer(currentTileLayer);
+  currentTileLayer = L.tileLayer(getMapTileUrl(), {
+    attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 18,
+  }).addTo(attackMap);
+}
+
+function updateAttackMap(points) {
+  if (!attackMap) return;
+  attackMarkers.forEach(m => attackMap.removeLayer(m));
+  attackMarkers = [];
+  points.forEach(p => {
+    const radius = Math.max(4, Math.min(18, p.count * 3));
+    const marker = L.circleMarker([p.lat, p.lon], {
+      radius: radius, fillColor: '#ef4444', color: '#ef4444', weight: 1, opacity: 0.8, fillOpacity: 0.4,
+    }).addTo(attackMap);
+    const ipsHtml = p.ips.map(ip => '<span class="ip-clickable" onclick="showIpDetail(\'' + ip + '\')" style="color:var(--accent)">' + ip + '</span>').join(', ');
+    marker.bindPopup('<div style="font-size:0.82rem"><strong>' + escapeHtml((p.city ? p.city + ', ' : '') + p.country) + '</strong><br><span style="color:var(--text-dim)">' + p.count + ' IP(s)</span><br>' + ipsHtml + '</div>', { className: '' });
+    attackMarkers.push(marker);
+  });
+}
+
+// ---- Fetch Security Geo (60s) ----
+async function fetchSecurityGeo() {
+  if (paused) return;
+  try {
+    initAttackMap();
+    const data = await api('/api/security-geo', 15000);
+
+    // Update map
+    if (data.mapPoints && data.mapPoints.length > 0) {
+      updateAttackMap(data.mapPoints);
+    }
+    document.getElementById('attackMapCount').textContent = data.totalIps > 0 ? '(' + data.totalIps + ' IPs)' : '';
+
+    // Country breakdown
+    const countryEl = document.getElementById('countryBreakdown');
+    if (data.countryStats && data.countryStats.length > 0) {
+      const total = data.countryStats.length;
+      const collapsed = total > 6;
+      countryEl.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">' +
+        '<span style="font-size:0.72rem;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:0.08em">Origenes por Pais (' + total + ')</span>' +
+        (collapsed ? '<button class="btn-sm" onclick="toggleCountryList(this)" style="font-size:0.72rem;padding:4px 10px">Mostrar todos</button>' : '') +
+        '</div>' +
+        '<div class="country-grid scrollable" id="countryGrid" style="max-height:' + (collapsed ? '160px' : 'none') + ';overflow-y:auto">' + data.countryStats.map(c => {
+          const code = /^[a-zA-Z]{2}$/.test(c.code) ? c.code.toLowerCase() : 'xx';
+          return '<div class="country-item fade-in">' +
+            '<img class="country-flag" src="https://flagcdn.com/24x18/' + code + '.png" alt="' + escapeHtml(c.code) + '" onerror="this.style.display=\'none\'">' +
+            '<span class="country-name">' + escapeHtml(c.country) + '</span>' +
+            '<span class="country-count">' + c.count + '</span>' +
+          '</div>';
+        }).join('') + '</div>';
+    } else {
+      countryEl.innerHTML = '';
+    }
+
+    // Make IPs clickable in the existing security section
+    // This enriches the already-rendered security section with geo data
+    if (data.decisions && data.decisions.length > 0) {
+      const secEl = document.getElementById('securitySection');
+      if (secEl) {
+        const alertSources = secEl.querySelectorAll('.alert-source');
+        alertSources.forEach(el => {
+          const ip = el.textContent.replace(/[()]/g, '').trim();
+          if (ip && /\d+\.\d+\.\d+\.\d+/.test(ip)) {
+            el.classList.add('ip-clickable');
+            el.onclick = () => showIpDetail(ip);
+          }
+        });
+        const alertScenarios = secEl.querySelectorAll('.alert-scenario');
+        alertScenarios.forEach(el => {
+          const ip = el.textContent.trim();
+          if (ip && /^\d+\.\d+\.\d+\.\d+/.test(ip)) {
+            el.classList.add('ip-clickable');
+            el.onclick = () => showIpDetail(ip);
+          }
+        });
+      }
+    }
+  } catch {}
+}
+
+// ---- Fetch Attack Stats (60s) ----
+async function fetchAttackStats() {
+  if (paused) return;
+  try {
+    const data = await api('/api/attack-stats');
+
+    // Daily chart
+    if (attackDailyChart && data.daily && data.daily.length > 0) {
+      attackDailyChart.data.labels = data.daily.map(d => d.label);
+      attackDailyChart.data.datasets[0].data = data.daily.map(d => d.count);
+      attackDailyChart.update('none');
+    }
+
+    // Hourly chart
+    if (attackHourlyChart && data.hourly && data.hourly.length > 0) {
+      attackHourlyChart.data.labels = data.hourly.map(h => h.hour);
+      attackHourlyChart.data.datasets[0].data = data.hourly.map(h => h.count);
+      attackHourlyChart.update('none');
+    }
+
+    // Scenario breakdown
+    const scenarioEl = document.getElementById('scenarioBreakdown');
+    if (data.scenarios && data.scenarios.length > 0) {
+      const maxCount = Math.max(...data.scenarios.map(s => s[1]), 1);
+      scenarioEl.innerHTML = '<div style="font-size:0.72rem;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">Escenarios de Ataque</div>' +
+        '<div class="scenario-bars">' + data.scenarios.map(([name, count]) => {
+          const pct = (count / maxCount * 100).toFixed(0);
+          const shortName = name.split('/').pop();
+          return '<div class="scenario-row">' +
+            '<span class="scenario-name" title="' + escapeHtml(name) + '">' + escapeHtml(shortName) + '</span>' +
+            '<div class="scenario-bar-track"><div class="scenario-bar-fill" style="width:' + pct + '%"></div></div>' +
+            '<span class="scenario-count">' + count + '</span>' +
+          '</div>';
+        }).join('') + '</div>';
+    } else {
+      scenarioEl.innerHTML = '<div class="empty-state">No hay datos de escenarios disponibles</div>';
+    }
+  } catch {}
+}
+
+// ---- IP Detail Modal ----
+async function showIpDetail(ip) {
+  const overlay = document.getElementById('ipDetailOverlay');
+  overlay.style.display = 'flex';
+  overlay.className = 'ip-detail-overlay';
+  overlay.innerHTML = '<div class="ip-detail-panel"><div class="loading"><div class="spinner"></div>Consultando informacion de IP...</div></div>';
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeIpDetail(); });
+
+  try {
+    const d = await api('/api/ip-info/' + encodeURIComponent(ip), 15000);
+    const code = (d.countryCode || '--').toLowerCase();
+    const flagUrl = 'https://flagcdn.com/48x36/' + code + '.png';
+
+    let html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">';
+    html += '<div class="ip-header">';
+    html += '<img class="ip-header-flag" src="' + flagUrl + '" alt="' + escapeHtml(d.countryCode || '') + '" onerror="this.style.display=\'none\'">';
+    html += '<div class="ip-header-info"><div class="ip-header-ip">' + escapeHtml(ip) + '</div>';
+    html += '<div class="ip-header-loc">' + escapeHtml([d.city, d.country].filter(Boolean).join(', ')) + '</div></div></div>';
+    html += '<button class="docker-detail-close" onclick="closeIpDetail()">Cerrar</button></div>';
+
+    // Geo + Org stats
+    html += '<div class="ip-detail-grid">';
+    html += '<div class="ip-detail-stat"><div class="ip-detail-stat-label">Organizacion</div><div class="ip-detail-stat-val">' + escapeHtml(d.org || d.isp || 'Desconocido') + '</div></div>';
+    html += '<div class="ip-detail-stat"><div class="ip-detail-stat-label">ISP</div><div class="ip-detail-stat-val">' + escapeHtml(d.isp || 'Desconocido') + '</div></div>';
+    html += '<div class="ip-detail-stat"><div class="ip-detail-stat-label">AS</div><div class="ip-detail-stat-val">' + escapeHtml(d.as || 'Desconocido') + '</div></div>';
+    html += '<div class="ip-detail-stat"><div class="ip-detail-stat-label">Ubicacion</div><div class="ip-detail-stat-val">' + escapeHtml([d.city, d.country].filter(Boolean).join(', ') || 'Desconocido') + '</div></div>';
+    html += '</div>';
+
+    // Coordinates
+    if (d.lat && d.lon) {
+      html += '<div class="ip-detail-row"><span style="color:var(--text-dim)">Coordenadas</span><span style="font-family:var(--font-mono);color:var(--text)">' + d.lat.toFixed(4) + ', ' + d.lon.toFixed(4) + '</span></div>';
+    }
+
+    // Active decisions (bans)
+    if (d.decisions && d.decisions.length > 0) {
+      html += '<div style="margin-top:16px;font-size:0.72rem;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">Bloqueos Activos</div>';
+      d.decisions.forEach(dec => {
+        const typeColor = dec.type === 'ban' ? 'var(--red)' : 'var(--yellow)';
+        html += '<div class="ip-detail-row"><span><span style="background:rgba(239,68,68,0.15);color:' + typeColor + ';padding:2px 8px;border-radius:6px;font-size:0.7rem;font-weight:700;text-transform:uppercase;margin-right:6px">' + escapeHtml(dec.type || 'ban') + '</span>' + escapeHtml(dec.scenario || '') + '</span><span style="font-family:var(--font-mono);font-size:0.78rem;color:var(--text-muted)">' + escapeHtml(dec.duration || '') + '</span></div>';
+      });
+    }
+
+    // Related alerts
+    if (d.alerts && d.alerts.length > 0) {
+      html += '<div style="margin-top:16px;font-size:0.72rem;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">Alertas Relacionadas</div>';
+      d.alerts.slice(0, 10).forEach(a => {
+        html += '<div class="ip-detail-row"><span style="color:var(--orange);font-weight:500">' + escapeHtml(a.scenario || 'Desconocido') + '</span><span style="font-family:var(--font-mono);font-size:0.78rem;color:var(--text-muted)">' + (a.events_count || '') + ' eventos &mdash; ' + (a.created_at ? timeAgo(a.created_at) : '') + '</span></div>';
+      });
+    }
+
+    // Attack history
+    if (d.history && d.history.length > 0) {
+      html += '<div style="margin-top:16px;font-size:0.72rem;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">Historial de Actividad</div>';
+      d.history.slice(0, 10).forEach(h => {
+        html += '<div class="ip-detail-row"><span style="color:var(--text)">' + escapeHtml(h.scenario || h.type || '?') + '</span><span style="font-family:var(--font-mono);font-size:0.78rem;color:var(--text-muted)">' + timeAgoMs(h.time) + '</span></div>';
+      });
+    }
+
+    overlay.innerHTML = '<div class="ip-detail-panel">' + html + '</div>';
+  } catch {
+    overlay.innerHTML = '<div class="ip-detail-panel"><div class="empty-state" style="color:var(--red)">Error al consultar informacion de la IP</div><button class="docker-detail-close" onclick="closeIpDetail()" style="margin:16px auto;display:block">Cerrar</button></div>';
+  }
+}
+
+function closeIpDetail() {
+  const overlay = document.getElementById('ipDetailOverlay');
+  overlay.style.display = 'none';
+  overlay.innerHTML = '';
+}
+
+function toggleCountryList(btn) {
+  const grid = document.getElementById('countryGrid');
+  if (grid.style.maxHeight === 'none') {
+    grid.style.maxHeight = '160px';
+    btn.textContent = 'Mostrar todos';
+  } else {
+    grid.style.maxHeight = 'none';
+    btn.textContent = 'Colapsar';
+  }
+}
+
+// ---- Fetch CPU Cores (5s) ----
+async function fetchCpuCores() {
+  if (paused) return;
+  try {
+    const data = await api('/api/cpu-cores');
+    const el = document.getElementById('cpuCoresSection');
+    if (!Array.isArray(data) || data.length === 0) {
+      el.innerHTML = '<div class="empty-state">No se detectaron cores</div>';
+      return;
+    }
+    el.innerHTML = '<div class="cores-grid">' + data.map(c => {
+      const color = c.usage > 90 ? 'var(--red)' : c.usage > 70 ? 'var(--yellow)' : 'var(--accent)';
+      const h = Math.max(2, c.usage) + '%';
+      return `<div class="core-item">
+        <div class="core-bar"><div class="core-fill" style="height:${h};background:${color}"></div></div>
+        <div class="core-val" style="color:${color}">${c.usage.toFixed(0)}</div>
+        <div class="core-label">${c.core.replace('cpu', '')}</div>
+      </div>`;
+    }).join('') + '</div>';
+  } catch {
+    document.getElementById('cpuCoresSection').innerHTML = '<div class="empty-state">Error al cargar cores</div>';
+  }
+}
+
+// ---- Fetch Swap (10s) ----
+async function fetchSwap() {
+  if (paused) return;
+  try {
+    const data = await api('/api/swap');
+    const el = document.getElementById('swapSection');
+    if (!data?.data?.[0] || !data.labels) { el.innerHTML = ''; return; }
+    const labels = data.labels;
+    const row = data.data[0];
+    const freeI = labels.indexOf('free');
+    const usedI = labels.indexOf('used');
+    const free = Math.abs(row[freeI] || 0);
+    const used = Math.abs(row[usedI] || 0);
+    const total = free + used;
+    if (total < 1) { el.innerHTML = ''; return; }
+    const pct = (used / total) * 100;
+    const color = pct > 80 ? 'var(--red)' : pct > 50 ? 'var(--yellow)' : 'var(--pink)';
+    el.innerHTML = `<div class="swap-bar">
+      <span style="font-size:0.75rem;color:var(--text-dim);font-weight:600;white-space:nowrap">SWAP</span>
+      <div class="swap-track"><div class="swap-fill" style="width:${pct.toFixed(1)}%;background:${color}"></div></div>
+      <span style="font-size:0.78rem;font-family:var(--font-mono);font-weight:600;color:${color};white-space:nowrap">${pct.toFixed(1)}%</span>
+    </div>
+    <div class="swap-info" style="margin-top:6px">
+      <span>Usado: <strong>${fmtBytes(used / 1024)}</strong></span>
+      <span>Libre: <strong>${fmtBytes(free / 1024)}</strong></span>
+      <span>Total: <strong>${fmtBytes(total / 1024)}</strong></span>
+    </div>`;
+  } catch {
+    document.getElementById('swapSection').innerHTML = '';
+  }
+}
+
+// ---- Fetch Connections (15s) ----
+async function fetchConnections() {
+  if (paused) return;
+  try {
+    const data = await api('/api/connections');
+    const el = document.getElementById('connectionsSection');
+    const items = [];
+    if (data.tcp) {
+      Object.entries(data.tcp).forEach(([k, v]) => {
+        if (v > 0) items.push({ label: 'TCP ' + k, val: v, color: 'var(--accent)' });
+      });
+    }
+    if (data.udp) {
+      Object.entries(data.udp).forEach(([k, v]) => {
+        if (v > 0) items.push({ label: 'UDP ' + k, val: v, color: 'var(--purple)' });
+      });
+    }
+    if (data.tcp6) {
+      const total6 = Object.values(data.tcp6).reduce((a, b) => a + b, 0);
+      if (total6 > 0) items.push({ label: 'TCP6 total', val: total6, color: 'var(--cyan)' });
+    }
+    if (data.udp6) {
+      const total6 = Object.values(data.udp6).reduce((a, b) => a + b, 0);
+      if (total6 > 0) items.push({ label: 'UDP6 total', val: total6, color: 'var(--blue)' });
+    }
+    if (items.length === 0) {
+      el.innerHTML = '<div class="empty-state">No se detectaron conexiones</div>';
+      return;
+    }
+    el.innerHTML = '<div class="conn-grid">' + items.map(i =>
+      `<div class="conn-item"><div class="conn-val" style="color:${i.color}">${i.val}</div><div class="conn-label">${escapeHtml(i.label)}</div></div>`
+    ).join('') + '</div>';
+  } catch {
+    document.getElementById('connectionsSection').innerHTML = '<div class="empty-state">Error al cargar conexiones</div>';
+  }
+}
+
+// ---- Init (staggered to avoid flooding mobile connections) ----
+async function init() {
+  // Critical data first
+  await Promise.all([fetchInfo(), fetchSystemInfo()]);
+  fetchSystem();
+  fetchCharts();
+  // Secondary data staggered
+  setTimeout(fetchStorage, 50);
+  setTimeout(fetchCpuCores, 100);
+  setTimeout(fetchSwap, 150);
+  setTimeout(fetchDocker, 200);
+  setTimeout(fetchProcesses, 300);
+  setTimeout(fetchConnections, 400);
+  setTimeout(fetchRestoreState, 500);
+  setTimeout(fetchAlarms, 600);
+  setTimeout(fetchSecurity, 700);
+  setTimeout(fetchAlertStatus, 800);
+  setTimeout(fetchNetInterfaces, 900);
+  setTimeout(fetchLogs, 1000);
+  // Slow data last
+  setTimeout(fetchDockerStats, 2000);
+  // Security geo + attack stats (heavy, load last)
+  setTimeout(fetchSecurityGeo, 3000);
+  setTimeout(fetchAttackStats, 4000);
+}
+init();
+
+// Polling intervals
+setInterval(fetchSystem, 3000);
+setInterval(fetchCharts, 3000);
+setInterval(fetchCpuCores, 5000);
+setInterval(fetchSwap, 10000);
+setInterval(fetchStorage, 30000);
+setInterval(fetchDocker, 10000);
+setInterval(fetchDockerStats, 15000);
+setInterval(fetchProcesses, 10000);
+setInterval(fetchConnections, 15000);
+setInterval(fetchRestoreState, 30000);
+setInterval(fetchAlarms, 30000);
+setInterval(fetchSecurity, 30000);
+setInterval(fetchAlertStatus, 30000);
+setInterval(fetchNetInterfaces, 30000);
+setInterval(fetchLogs, 30000);
+setInterval(fetchSecurityGeo, 60000);
+setInterval(fetchAttackStats, 60000);
+</script>
+</body>
+</html>
