@@ -22,7 +22,8 @@ function escapeHtml(text) {
 }
 
 /**
- * Build the closed list of events the digest may talk about.
+ * Build the closed list of events the digest may talk about, plus the totals over
+ * the whole window (the list itself is capped, the totals are not).
  * crowdsecAlerts: CrowdSec LAPI alerts (already filtered to actionable ones).
  * decisions: active CrowdSec decisions.
  * history: the monitor's own alert history ({ type, title, message, time }).
@@ -62,7 +63,18 @@ function collectEvents({ crowdsecAlerts = [], decisions = [], history = [], now 
   }
 
   events.sort((a, b) => b.severity - a.severity || b.count - a.count || String(b.time).localeCompare(String(a.time)));
-  return events.slice(0, MAX_EVENTS);
+  return { events: events.slice(0, MAX_EVENTS), totals: countEvents(events) };
+}
+
+function countEvents(events) {
+  const alerts = events.filter(e => e.kind === 'crowdsec_alert');
+  return {
+    events: events.length,
+    crowdsec_alerts: alerts.length,
+    ips: new Set(alerts.map(e => e.ip)).size,
+    bans: events.filter(e => e.kind === 'ban').length,
+    system: events.filter(e => e.kind === 'system' && e.severity > 0).length,
+  };
 }
 
 const DIGEST_SCHEMA = {
@@ -86,13 +98,14 @@ const DIGEST_SCHEMA = {
   required: ['summary', 'priorities'],
 };
 
-function buildMessages(events) {
+function buildMessages(events, totals = countEvents(events)) {
   const system = [
     'Eres un asistente que resume la seguridad de un unico servidor domestico.',
     'Reglas:',
     '- Usa SOLO los eventos de la lista. No inventes eventos, IPs, horas ni cifras.',
     '- Cada prioridad debe citar ids que aparezcan literalmente en la lista.',
     '- Ordena por lo que conviene mirar primero: servicios caidos, recursos al limite y ataques activos antes que ruido de escaneo.',
+    '- Para cifras globales usa los totales indicados, no cuentes la lista (puede estar recortada).',
     '- Si los eventos son rutinarios, dilo claramente.',
     '- No propongas ejecutar acciones automaticas; como mucho, que revisar.',
     '- Responde en espanol, solo JSON con { "summary": string, "priorities": [{ "title", "reason", "event_ids" }] }, maximo 3 prioridades y un resumen de 2 o 3 frases.',
@@ -100,7 +113,7 @@ function buildMessages(events) {
   const list = events.map(e => JSON.stringify({ id: e.id, time: e.time, kind: e.kind, text: e.text })).join('\n');
   return [
     { role: 'system', content: system },
-    { role: 'user', content: `Eventos de las ultimas 24 horas (${events.length}):\n${list}` },
+    { role: 'user', content: `Totales de la ventana: ${totals.events} eventos, ${totals.crowdsec_alerts} alertas de CrowdSec desde ${totals.ips} IPs, ${totals.bans} bloqueos activos, ${totals.system} avisos del sistema.\nEventos de las últimas 24 horas (${events.length} mostrados):\n${list}` },
   ];
 }
 
@@ -139,16 +152,13 @@ function validateDigest(raw, events) {
   return { summary, priorities, dropped_ids: dropped };
 }
 
-function deterministicDigest(events) {
-  const alerts = events.filter(e => e.kind === 'crowdsec_alert');
-  const bans = events.filter(e => e.kind === 'ban');
-  const system = events.filter(e => e.kind === 'system' && e.severity > 0);
-  const ips = new Set(alerts.map(e => e.ip));
-  const summary = `${events.length} eventos en 24 h: ${alerts.length} alertas de CrowdSec desde ${ips.size} IPs, ` +
-    `${bans.length} bloqueos activos y ${system.length} avisos del sistema.`;
+function deterministicDigest(events, totals = countEvents(events)) {
+  const t = totals;
+  const summary = `${t.events} eventos en 24 h: ${t.crowdsec_alerts} alertas de CrowdSec desde ${t.ips} IPs, ` +
+    `${t.bans} bloqueos activos ahora y ${t.system} avisos del sistema.`;
   const reasons = {
     system: 'Aviso del propio servidor: afecta a la disponibilidad.',
-    crowdsec_alert: 'Alerta de CrowdSec con mas eventos del periodo.',
+    crowdsec_alert: 'Alerta de CrowdSec con más eventos del periodo.',
     ban: 'Bloqueo ya aplicado por CrowdSec; revisar solo si se repite.',
   };
   const priorities = events
@@ -174,7 +184,7 @@ async function callOllama(messages, { url, model, timeoutMs, fetchImpl }) {
  * Produce the digest. options: { enabled, url, model, timeoutMs, fetchImpl, now }.
  */
 async function generateDigest(events, options = {}) {
-  const { enabled = false, url = '', model = '', timeoutMs = 20000, fetchImpl = globalThis.fetch, now = Date.now() } = options;
+  const { enabled = false, url = '', model = '', timeoutMs = 20000, fetchImpl = globalThis.fetch, now = Date.now(), totals = countEvents(events) } = options;
   const base = { generated_at: new Date(now).toISOString(), window_hours: WINDOW_MS / 3600000, event_count: events.length };
   const withEvents = d => ({
     ...d,
@@ -182,25 +192,25 @@ async function generateDigest(events, options = {}) {
   });
 
   if (events.length === 0) {
-    return { ...base, source: 'none', summary: 'Sin eventos en las ultimas 24 horas.', priorities: [], dropped_ids: 0 };
+    return { ...base, source: 'none', summary: 'Sin eventos en las últimas 24 horas.', priorities: [], dropped_ids: 0 };
   }
   if (!enabled || !url || !model) {
-    return { ...base, source: 'deterministic', fallback_reason: 'disabled', ...withEvents(deterministicDigest(events)) };
+    return { ...base, source: 'deterministic', fallback_reason: 'disabled', ...withEvents(deterministicDigest(events, totals)) };
   }
   try {
-    const content = await callOllama(buildMessages(events), { url, model, timeoutMs, fetchImpl });
+    const content = await callOllama(buildMessages(events, totals), { url, model, timeoutMs, fetchImpl });
     const valid = validateDigest(content, events);
-    if (!valid) return { ...base, source: 'deterministic', fallback_reason: 'invalid_output', ...withEvents(deterministicDigest(events)) };
+    if (!valid) return { ...base, source: 'deterministic', fallback_reason: 'invalid_output', ...withEvents(deterministicDigest(events, totals)) };
     return { ...base, source: 'llm', model, ...withEvents(valid) };
   } catch (e) {
     const reason = e?.name === 'TimeoutError' ? 'timeout' : 'unreachable';
-    return { ...base, source: 'deterministic', fallback_reason: reason, ...withEvents(deterministicDigest(events)) };
+    return { ...base, source: 'deterministic', fallback_reason: reason, ...withEvents(deterministicDigest(events, totals)) };
   }
 }
 
 function formatTelegram(digest, dashboardUrl = '') {
   const label = digest.source === 'llm' ? `IA (${escapeHtml(digest.model)})` : 'determinista';
-  let text = `\u{1F9E0} <b>Resumen de seguridad</b> <i>(${label})</i>\n<i>Ultimas ${digest.window_hours} horas, ${digest.event_count} eventos</i>\n\n`;
+  let text = `\u{1F9E0} <b>Resumen de seguridad</b> <i>(${label})</i>\n<i>Últimas ${digest.window_hours} horas, ${digest.event_count} eventos</i>\n\n`;
   text += `${escapeHtml(digest.summary)}\n`;
   digest.priorities.forEach((p, i) => {
     text += `\n<b>${i + 1}. ${escapeHtml(p.title)}</b>\n`;

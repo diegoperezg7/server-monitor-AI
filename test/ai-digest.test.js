@@ -7,6 +7,10 @@ const NOW = Date.parse('2026-10-23T12:00:00Z');
 const hoursAgo = h => NOW - h * 3600000;
 
 function sampleEvents() {
+  return collect().events;
+}
+
+function collect() {
   return collectEvents({
     now: NOW,
     crowdsecAlerts: [
@@ -42,6 +46,18 @@ const enabled = fetchImpl => ({ enabled: true, url: 'http://ollama.test:11434', 
 test('collectEvents keeps the last 24 hours and only known system types', () => {
   const ids = sampleEvents().map(e => e.id);
   assert.deepEqual(ids.sort(), ['ban-7', 'cs-101', 'cs-102', `sys-${hoursAgo(1)}`].sort());
+});
+
+test('collectEvents reports uncapped totals', () => {
+  const { totals } = collect();
+  assert.deepEqual(totals, { events: 4, crowdsec_alerts: 2, ips: 2, bans: 1, system: 1 });
+});
+
+test('the deterministic summary uses the totals, not the capped list', async () => {
+  const events = sampleEvents();
+  const totals = { events: 80, crowdsec_alerts: 40, ips: 30, bans: 34, system: 6 };
+  const digest = await generateDigest(events, { totals, now: NOW });
+  assert.match(digest.summary, /^80 eventos en 24 h: 40 alertas de CrowdSec desde 30 IPs, 34 bloqueos activos ahora y 6 avisos/);
 });
 
 test('collectEvents orders by severity first', () => {
@@ -98,6 +114,7 @@ test('generateDigest uses the model output when it validates', async () => {
   assert.equal(calls[0].url, 'http://ollama.test:11434/api/chat');
   assert.equal(calls[0].body.stream, false);
   assert.match(calls[0].body.messages[1].content, /cs-101/);
+  assert.match(calls[0].body.messages[1].content, /1 bloqueos activos/);
 });
 
 test('generateDigest falls back when the model invents events', async () => {

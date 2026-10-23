@@ -396,7 +396,7 @@ async function collectDigestEvents() {
   if (CS_BOUNCER_KEY) {
     try {
       const data = await fetchJSON(CROWDSEC + '/v1/decisions', { 'X-Api-Key': CS_BOUNCER_KEY });
-      if (Array.isArray(data)) decisions = data.slice(0, 30);
+      if (Array.isArray(data)) decisions = data;
     } catch {}
   }
   return aiDigest.collectEvents({ crowdsecAlerts, decisions, history: alertState.history });
@@ -405,9 +405,9 @@ async function collectDigestEvents() {
 function refreshAiDigest() {
   if (aiDigestState.pending) return aiDigestState.pending;
   aiDigestState.pending = (async () => {
-    const events = await collectDigestEvents();
+    const { events, totals } = await collectDigestEvents();
     const digest = await aiDigest.generateDigest(events, {
-      enabled: AI_DIGEST_ENABLED, url: OLLAMA_URL, model: OLLAMA_MODEL, timeoutMs: OLLAMA_TIMEOUT_MS,
+      totals, enabled: AI_DIGEST_ENABLED, url: OLLAMA_URL, model: OLLAMA_MODEL, timeoutMs: OLLAMA_TIMEOUT_MS,
     });
     aiDigestState.digest = digest;
     return digest;
