@@ -17,6 +17,8 @@ services:
       - HEALTHCHECK_PING_URL=${HEALTHCHECK_PING_URL}
       - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD}
       - DASHBOARD_URL=${DASHBOARD_URL}
+      - OLLAMA_URL=${OLLAMA_URL:-}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:7b}
       - DOCKER_HOST=http://docker-proxy:2375
       - AUTO_RESTORE_ON_BOOT=true
       - RESTORE_STATE_FILE=/data/active-services-state.json

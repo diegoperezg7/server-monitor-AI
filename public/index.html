@@ -622,6 +622,19 @@
     0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); }
     50% { box-shadow: 0 0 0 8px rgba(239,68,68,0); }
   }
+  /* AI security digest */
+  .ai-digest-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; font-size: 0.78rem; color: var(--text-dim); }
+  .ai-digest-source { padding: 3px 10px; border-radius: 999px; font-family: var(--font-mono); font-size: 0.72rem; border: 1px solid var(--border); background: var(--surface2); }
+  .ai-digest-source.llm { color: var(--accent); border-color: var(--accent-light); background: var(--accent-light); }
+  .ai-digest-summary { font-size: 0.95rem; line-height: 1.55; margin-bottom: 14px; }
+  .ai-digest-list { display: grid; gap: 10px; }
+  .ai-digest-item { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; background: var(--surface2); }
+  .ai-digest-item-title { font-weight: 600; font-size: 0.9rem; display: flex; gap: 8px; }
+  .ai-digest-item-rank { color: var(--accent); font-family: var(--font-mono); }
+  .ai-digest-item-reason { color: var(--text-dim); font-size: 0.83rem; margin-top: 4px; line-height: 1.45; }
+  .ai-digest-evidence { margin-top: 8px; display: grid; gap: 4px; }
+  .ai-digest-evidence div { font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-muted); }
+  .ai-digest-evidence b { color: var(--text-dim); font-weight: 500; }
 </style>
 </head>
 <body>
@@ -753,6 +766,12 @@
   <div id="dockerDetailOverlay" style="display:none"></div>
 
   <div class="separator"></div>
+
+  <!-- AI security digest -->
+  <div class="card card-glow">
+    <div class="card-title"><span class="card-title-icon"><svg viewBox="0 0 24 24"><path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg></span> AI digest &mdash; ultimas 24 h</div>
+    <div id="aiDigestSection"><div class="loading"><div class="spinner"></div>Generando resumen...</div></div>
+  </div>
 
   <!-- Security (CrowdSec) -->
   <div class="card card-glow">
@@ -2084,6 +2103,36 @@ function updateAttackMap(points) {
 }
 
 // ---- Fetch Security Geo (60s) ----
+async function fetchAiDigest() {
+  if (paused) return;
+  const el = document.getElementById('aiDigestSection');
+  try {
+    const d = await api('/api/ai-digest', 30000);
+    const reasons = { disabled: 'IA desactivada', timeout: 'Ollama no respondio a tiempo', unreachable: 'Ollama no disponible', invalid_output: 'respuesta de la IA descartada' };
+    const source = d.source === 'llm'
+      ? `<span class="ai-digest-source llm">IA local &middot; ${escapeHtml(d.model)}</span>`
+      : d.source === 'none'
+        ? '<span class="ai-digest-source">sin eventos</span>'
+        : `<span class="ai-digest-source">determinista &middot; ${escapeHtml(reasons[d.fallback_reason] || d.fallback_reason || '')}</span>`;
+    const when = new Date(d.generated_at).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    let html = `<div class="ai-digest-meta">${source}<span>${d.event_count} eventos revisados &middot; generado ${when}</span></div>`;
+    html += `<div class="ai-digest-summary">${escapeHtml(d.summary)}</div>`;
+    if (d.priorities?.length) {
+      html += '<div class="ai-digest-list">' + d.priorities.map((p, i) => `
+        <div class="ai-digest-item">
+          <div class="ai-digest-item-title"><span class="ai-digest-item-rank">${i + 1}</span>${escapeHtml(p.title)}</div>
+          ${p.reason ? `<div class="ai-digest-item-reason">${escapeHtml(p.reason)}</div>` : ''}
+          <div class="ai-digest-evidence">${(p.events || []).filter(Boolean).map(e =>
+            `<div><b>${escapeHtml(e.id)}</b> ${e.time ? escapeHtml(new Date(e.time).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })) + ' &middot; ' : ''}${escapeHtml(e.text)}</div>`
+          ).join('')}</div>
+        </div>`).join('') + '</div>';
+    }
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem">No se pudo cargar el resumen.</div>';
+  }
+}
+
 async function fetchSecurityGeo() {
   if (paused) return;
   try {
@@ -2381,6 +2430,7 @@ async function init() {
   // Security geo + attack stats (heavy, load last)
   setTimeout(fetchSecurityGeo, 3000);
   setTimeout(fetchAttackStats, 4000);
+  setTimeout(fetchAiDigest, 1200);
 }
 init();
 
@@ -2402,6 +2452,7 @@ setInterval(fetchNetInterfaces, 30000);
 setInterval(fetchLogs, 30000);
 setInterval(fetchSecurityGeo, 60000);
 setInterval(fetchAttackStats, 60000);
+setInterval(fetchAiDigest, 5 * 60000);
 </script>
 </body>
 </html>

@@ -5,6 +5,7 @@ const https = require('https');
 const crypto = require('crypto');
 const net = require('net');
 const path = require('path');
+const aiDigest = require('./ai-digest');
 
 const app = express();
 const PORT = 3000;
@@ -32,6 +33,13 @@ const TG_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
 
 // Healthchecks.io config
 const HC_PING_URL = process.env.HEALTHCHECK_PING_URL || '';
+
+// AI security digest (optional, local Ollama). It only summarises; it never acts.
+const OLLAMA_URL = process.env.OLLAMA_URL || '';
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:7b';
+const OLLAMA_TIMEOUT_MS = Number(process.env.OLLAMA_TIMEOUT_MS || 20000);
+const AI_DIGEST_ENABLED = String(process.env.AI_DIGEST_ENABLED || (OLLAMA_URL ? 'true' : 'false')).toLowerCase() === 'true';
+const AI_DIGEST_TTL_MS = Number(process.env.AI_DIGEST_TTL_MS || 15 * 60 * 1000);
 
 // --- CrowdSec JWT cache ---
 let csToken = null;
@@ -373,7 +381,55 @@ async function sendAlert(type, title, message) {
   return ok;
 }
 
+// Latest AI digest, shared by the dashboard card and the Telegram digest
+const aiDigestState = { digest: null, pending: null };
+
+async function collectDigestEvents() {
+  let crowdsecAlerts = [], decisions = [];
+  try {
+    const token = await getCrowdSecToken();
+    if (token) {
+      const data = await fetchJSON(CROWDSEC + '/v1/alerts?limit=200', { Authorization: 'Bearer ' + token });
+      if (Array.isArray(data)) crowdsecAlerts = data.filter(isActionableCrowdSecAlert);
+    }
+  } catch {}
+  if (CS_BOUNCER_KEY) {
+    try {
+      const data = await fetchJSON(CROWDSEC + '/v1/decisions', { 'X-Api-Key': CS_BOUNCER_KEY });
+      if (Array.isArray(data)) decisions = data.slice(0, 30);
+    } catch {}
+  }
+  return aiDigest.collectEvents({ crowdsecAlerts, decisions, history: alertState.history });
+}
+
+function refreshAiDigest() {
+  if (aiDigestState.pending) return aiDigestState.pending;
+  aiDigestState.pending = (async () => {
+    const events = await collectDigestEvents();
+    const digest = await aiDigest.generateDigest(events, {
+      enabled: AI_DIGEST_ENABLED, url: OLLAMA_URL, model: OLLAMA_MODEL, timeoutMs: OLLAMA_TIMEOUT_MS,
+    });
+    aiDigestState.digest = digest;
+    return digest;
+  })().finally(() => { aiDigestState.pending = null; });
+  return aiDigestState.pending;
+}
+
 async function sendSecurityDigest() {
+  // Prefer the AI digest when the model produced a validated answer.
+  const digest = await refreshAiDigest().catch(() => null);
+  if (digest && digest.source === 'llm') {
+    const ok = await sendTelegram(aiDigest.formatTelegram(digest, DASHBOARD_URL) + `<i>${new Date().toLocaleString('es-ES')}</i>`);
+    alertState.telegramOk = ok;
+    alertState.history.unshift({ type: 'security_digest', title: 'Resumen de Seguridad (IA)', message: `${digest.event_count} eventos, ${digest.priorities.length} prioridades`, time: Date.now(), sent: ok });
+    if (alertState.history.length > 50) alertState.history.pop();
+    securityDigest.alerts = [];
+    securityDigest.bans = [];
+    securityDigest.lastDigestSent = Date.now();
+    securityDigest.underAttackSent = false;
+    return;
+  }
+
   if (securityDigest.alerts.length === 0 && securityDigest.bans.length === 0) return;
 
   // Group alerts by scenario
@@ -1280,6 +1336,26 @@ app.get('/api/disk-io', async (req, res) => {
   }
 });
 
+// AI security digest (cached; refreshed in the background when stale)
+app.get('/api/ai-digest', async (req, res) => {
+  try {
+    const current = aiDigestState.digest;
+    if (!current) return res.json(await refreshAiDigest());
+    if (Date.now() - Date.parse(current.generated_at) > AI_DIGEST_TTL_MS) refreshAiDigest().catch(() => {});
+    res.json(current);
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+app.post('/api/ai-digest/refresh', requireWriteAccess, async (req, res) => {
+  try {
+    res.json(await refreshAiDigest());
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
 // Alert status and history
 app.get('/api/alerts/status', (req, res) => {
   res.json({
@@ -1752,6 +1828,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server Monitor running on port ${PORT}`);
   console.log(`Telegram alerts: ${TG_TOKEN && TG_CHAT_ID ? 'ENABLED' : 'DISABLED'}`);
   console.log(`Healthcheck heartbeat: ${HC_PING_URL ? 'ENABLED' : 'DISABLED'}`);
+  console.log(`AI digest: ${AI_DIGEST_ENABLED && OLLAMA_URL ? `ENABLED (${OLLAMA_MODEL})` : 'DISABLED (deterministic digest)'}`);
   console.log(`Auto-restore: ${AUTO_RESTORE_ON_BOOT ? `ENABLED (${RESTORE_STATE_FILE})` : 'DISABLED'}`);
   readPersistedRestoreSnapshot().catch(() => {});
   if (AUTO_RESTORE_ON_BOOT) {
