@@ -2061,11 +2061,14 @@ var attackMap = null;
 var attackMarkers = [];
 var currentTileLayer = null;
 
+// CARTO's free basemaps now answer with an "API key required" tile, so use
+// Esri's keyless gray canvas basemaps instead.
+const MAP_ATTRIBUTION = 'Tiles &copy; Esri &mdash; Esri, HERE, Garmin, &copy; OpenStreetMap contributors';
+
 function getMapTileUrl() {
   const theme = document.documentElement.getAttribute('data-theme');
-  return theme === 'light'
-    ? 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
-    : 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+  const canvas = theme === 'light' ? 'World_Light_Gray_Base' : 'World_Dark_Gray_Base';
+  return 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/' + canvas + '/MapServer/tile/{z}/{y}/{x}';
 }
 
 function initAttackMap() {
@@ -2074,7 +2077,7 @@ function initAttackMap() {
   container.innerHTML = '';
   attackMap = L.map(container, { zoomControl: true, attributionControl: true, scrollWheelZoom: true }).setView([30, 0], 2);
   currentTileLayer = L.tileLayer(getMapTileUrl(), {
-    attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 18,
+    attribution: MAP_ATTRIBUTION, maxZoom: 16,
   }).addTo(attackMap);
   setTimeout(() => attackMap.invalidateSize(), 200);
 }
@@ -2083,7 +2086,7 @@ function updateMapTheme() {
   if (!attackMap || !currentTileLayer) return;
   attackMap.removeLayer(currentTileLayer);
   currentTileLayer = L.tileLayer(getMapTileUrl(), {
-    attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 18,
+    attribution: MAP_ATTRIBUTION, maxZoom: 16,
   }).addTo(attackMap);
 }
 
