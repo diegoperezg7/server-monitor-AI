@@ -2116,7 +2116,7 @@ async function fetchAiDigest() {
       ? `<span class="ai-digest-source llm">IA local &middot; ${escapeHtml(d.model)}</span>`
       : d.source === 'none'
         ? '<span class="ai-digest-source">sin eventos</span>'
-        : `<span class="ai-digest-source">determinista &middot; ${escapeHtml(reasons[d.fallback_reason] || d.fallback_reason || '')}</span>`;
+        : `<span class="ai-digest-source">fallback determinista &middot; ${escapeHtml(reasons[d.fallback_reason] || d.fallback_reason || '')}</span>`;
     const when = new Date(d.generated_at).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
     let html = `<div class="ai-digest-meta">${source}<span>${d.event_count} eventos revisados &middot; generado ${when}</span></div>`;
     html += `<div class="ai-digest-summary">${escapeHtml(d.summary)}</div>`;
